@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HAR Foreclosure Properties - Property Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0d4a2c 0%, #1a5f3f 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0a3d20 0%, #0d4a2c 25%, #1a5f3f 50%, #2d7a52 75%, #3d9a66 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 50%, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .header > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .filters {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            border-bottom: 1px solid #dee2e6;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #495057;
+            font-size: 0.9em;
+        }
+
+        .filter-group select,
+        .filter-group input {
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 1em;
+            background: white;
+        }
+
+        .filter-group input[type="range"] {
+            padding: 0;
+        }
+
+        .price-slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .price-slider-wrapper {
+            position: relative;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            isolation: isolate;
+            z-index: 0;
+        }
+
+        .price-slider {
+            position: absolute;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: transparent;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            pointer-events: none;
+            transform: translateZ(0);
+            will-change: transform;
+        }
+
+        #priceMax {
+            z-index: 10;
+            position: relative;
+        }
+
+        #priceMin {
+            z-index: 9;
+            position: relative;
+        }
+
+        .price-slider::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 3px;
+        }
+
+        .price-slider::-moz-range-track {
+            height: 6px;
+            border-radius: 3px;
+            background: transparent;
+        }
+
+        .price-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #1a5f3f;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            pointer-events: all;
+            position: relative;
+            z-index: 100;
+            transform: translateZ(0);
+            will-change: transform;
+        }
+
+        .price-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #1a5f3f;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            pointer-events: all;
+            position: relative;
+            z-index: 100;
+            transform: translateZ(0);
+            will-change: transform;
+        }
+
+        .price-slider::-webkit-slider-thumb:hover {
+            background: #0d4a2c;
+        }
+
+        .price-slider::-moz-range-thumb:hover {
+            background: #0d4a2c;
+        }
+
+        .price-slider-track {
+            position: absolute;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #dee2e6;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .price-slider-fill {
+            position: absolute;
+            height: 6px;
+            border-radius: 3px;
+            background: #1a5f3f;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .price-range-display {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85em;
+            color: #6c757d;
+            margin-top: 3px;
+        }
+
+        .stats {
+            padding: 15px 30px;
+            background: #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .stat-item {
+            font-size: 0.95em;
+            color: #495057;
+        }
+
+        .stat-item strong {
+            color: #1a5f3f;
+        }
+
+        .properties-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            padding: 30px;
+        }
+
+        .property-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .property-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .property-image {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, #0d4a2c 0%, #1a5f3f 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2em;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .property-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .property-image .no-image {
+            position: absolute;
+            z-index: 1;
+        }
+
+        .property-content {
+            padding: 20px;
+        }
+
+        .property-price {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #1a5f3f;
+            margin-bottom: 10px;
+        }
+
+        .property-address {
+            font-size: 1.1em;
+            color: #495057;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .property-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+
+        .property-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .property-detail-item strong {
+            color: #495057;
+        }
+
+        .property-type {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #e9ecef;
+            border-radius: 12px;
+            font-size: 0.85em;
+            color: #495057;
+            margin-top: 10px;
+        }
+
+        .property-maintenance {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+
+        .property-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 8px 16px;
+            background: #1a5f3f;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .property-link:hover {
+            background: #0d4a2c;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .no-results h2 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+            font-size: 1.2em;
+        }
+
+        @media (max-width: 768px) {
+            .filters {
+                grid-template-columns: 1fr;
+            }
+
+            .properties-grid {
+                grid-template-columns: 1fr;
+                padding: 15px;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏘️ HAR Foreclosure Properties</h1>
+            <p>Browse and filter foreclosure properties by area, zipcode, and price</p>
+        </div>
+
+        <div class="filters">
+            <div class="filter-group">
+                <label for="areaFilter">Area (City/County)</label>
+                <select id="areaFilter">
+                    <option value="">All Areas</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="zipcodeFilter">Zipcode</label>
+                <select id="zipcodeFilter">
+                    <option value="">All Zipcodes</option>
+                </select>
+            </div>
+
+            <div class="filter-group price-slider-container">
+                <label>Price Range</label>
+                <div class="price-slider-wrapper">
+                    <input type="range" id="priceMin" class="price-slider" min="0" max="1000000" step="1000" value="0">
+                    <input type="range" id="priceMax" class="price-slider" min="0" max="1000000" step="1000" value="1000000">
+                    <div class="price-slider-track"></div>
+                    <div class="price-slider-fill" id="priceSliderFill"></div>
+                </div>
+                <div class="price-range-display">
+                    <span>Min: $<span id="priceMinValue">0</span></span>
+                    <span>Max: $<span id="priceMaxValue">0</span></span>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <label for="sortBy">Sort By</label>
+                <select id="sortBy">
+                    <option value="price-asc">Price: Low to High</option>
+                    <option value="price-desc">Price: High to Low</option>
+                    <option value="zipcode-asc">Zipcode: Low to High</option>
+                    <option value="zipcode-desc">Zipcode: High to Low</option>
+                    <option value="maintenance-asc">Maintenance Fee: Low to High</option>
+                    <option value="maintenance-desc">Maintenance Fee: High to Low</option>
+                    <option value="date-asc">Listing Date: Oldest First</option>
+                    <option value="date-desc">Listing Date: Newest First</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <strong id="totalCount">0</strong> properties found
+            </div>
+            <div class="stat-item">
+                Price range: <strong id="priceRange">$0 - $0</strong>
+            </div>
+        </div>
+
+        <div id="propertiesContainer" class="properties-grid">
+            <div class="loading">Loading properties...</div>
+        </div>
+    </div>
+
+    <script>
+        let allProperties = [];
+        let filteredProperties = [];
+
+        // Load data
+        async function loadData() {
+            try {
+                // Load the JavaScript file with consolidated data
+                const script = document.createElement('script');
+                script.src = 'output/consolidated_data.js';
+                document.head.appendChild(script);
+                
+                // Wait for script to load and get data
+                await new Promise((resolve, reject) => {
+                    script.onload = resolve;
+                    script.onerror = reject;
+                });
+                
+                const data = await getConsolidatedData();
+                
+                // Extract properties from the nested structure
+                const properties = Object.values(data.data.property || {});
+                allProperties = properties.map(prop => {
+                    const location = prop.location?.[0] || {};
+                    const address = prop.address?.[0] || {};
+                    const detail = prop.detail?.[0] || {};
+                    const media = prop.media?.[0] || {};
+                    const maintenance = prop.maintenance?.[0] || {};
+                    
+                    return {
+                        mls_number: prop.mls_number,
+                        price: prop.price || 0,
+                        url: prop.url || '',
+                        status: prop.status || '',
+                        listing_date: prop.listing_date || '',
+                        description: prop.description || '',
+                        city: location.city || '',
+                        state: location.state || '',
+                        zipcode: location.zipcode || null,
+                        county: location.county || '',
+                        street_number: address.street_number || null,
+                        street: address.street || '',
+                        property_type: detail.property_type || '',
+                        beds: detail.beds || null,
+                        baths: detail.baths || null,
+                        sqft: detail.sqft || null,
+                        lot_size_sqft: detail.lot_size_sqft || null,
+                        year_built: detail.year_built || null,
+                        images: media.images || [],
+                        maintenance_fee: maintenance.maintenance_fee || null,
+                        maintenance_fee_frequency: maintenance.maintenance_fee_frequency || ''
+                    };
+                });
+
+                populateFilters();
+                filterProperties();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('propertiesContainer').innerHTML = 
+                    '<div class="no-results"><h2>Error Loading Data</h2><p>Could not load property data. Make sure consolidated_data.json is available.</p></div>';
+            }
+        }
+
+        // Populate filter dropdowns and initialize price sliders
+        function populateFilters() {
+            const areaSet = new Set();
+            const zipcodeSet = new Set();
+            const prices = allProperties.map(p => p.price).filter(p => p > 0);
+
+            allProperties.forEach(prop => {
+                if (prop.city) areaSet.add(prop.city);
+                if (prop.county) areaSet.add(prop.county);
+                if (prop.zipcode) zipcodeSet.add(prop.zipcode);
+            });
+
+            const areaFilter = document.getElementById('areaFilter');
+            Array.from(areaSet).sort().forEach(area => {
+                const option = document.createElement('option');
+                option.value = area;
+                option.textContent = area;
+                areaFilter.appendChild(option);
+            });
+
+            const zipcodeFilter = document.getElementById('zipcodeFilter');
+            Array.from(zipcodeSet).sort((a, b) => a - b).forEach(zipcode => {
+                const option = document.createElement('option');
+                option.value = zipcode;
+                option.textContent = zipcode;
+                zipcodeFilter.appendChild(option);
+            });
+
+            // Initialize price sliders based on actual data
+            if (prices.length > 0) {
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                
+                // Handle edge case where all prices are the same
+                const priceRange = maxPrice - minPrice;
+                let padding, sliderMin, sliderMax;
+                
+                if (priceRange === 0) {
+                    // All prices are the same - add padding around the single price
+                    padding = Math.max(1000, Math.floor(minPrice * 0.1)); // 10% of price or $1k minimum
+                    sliderMin = Math.max(0, minPrice - padding);
+                    sliderMax = maxPrice + padding;
+                } else {
+                    // Normal case: prices vary
+                    // Use actual min/max from data, with some padding for easier selection
+                    padding = Math.max(1000, Math.floor(priceRange * 0.1)); // 10% padding or at least $1k
+                    sliderMin = Math.max(0, minPrice - padding);
+                    sliderMax = maxPrice + padding;
+                }
+                
+                // Calculate appropriate step size (creates ~1000 steps, minimum $100)
+                const range = sliderMax - sliderMin;
+                const step = Math.max(100, Math.floor(range / 1000));
+
+                const priceMinSlider = document.getElementById('priceMin');
+                const priceMaxSlider = document.getElementById('priceMax');
+
+                // Set slider attributes based on data
+                priceMinSlider.min = sliderMin;
+                priceMinSlider.max = sliderMax;
+                priceMinSlider.value = minPrice; // Start at actual min from data
+                priceMinSlider.step = step;
+
+                priceMaxSlider.min = sliderMin;
+                priceMaxSlider.max = sliderMax;
+                // Set slider to maxPrice, clamped to slider range
+                const maxValue = Math.min(sliderMax, Math.max(sliderMin, maxPrice));
+                // Round to nearest step
+                const maxValueSteps = Math.round((maxValue - sliderMin) / step);
+                priceMaxSlider.value = sliderMin + (maxValueSteps * step);
+                priceMaxSlider.step = step;
+
+                // Store actual max price for display purposes
+                actualMaxPrice = maxPrice;
+
+                // Update display values - always show the actual maxPrice from data
+                document.getElementById('priceMinValue').textContent = minPrice.toLocaleString();
+                document.getElementById('priceMaxValue').textContent = maxPrice.toLocaleString();
+                
+                // Update slider fill
+                updateSliderFill();
+            } else {
+                // No valid prices found - set defaults
+                const priceMinSlider = document.getElementById('priceMin');
+                const priceMaxSlider = document.getElementById('priceMax');
+                priceMinSlider.min = 0;
+                priceMinSlider.max = 1000000;
+                priceMinSlider.value = 0;
+                priceMinSlider.step = 1000;
+                priceMaxSlider.min = 0;
+                priceMaxSlider.max = 1000000;
+                priceMaxSlider.value = 1000000;
+                priceMaxSlider.step = 1000;
+                updatePriceDisplay();
+            }
+        }
+
+        // Store actual max price from data for display
+        let actualMaxPrice = 0;
+
+        // Update price slider display values and fill
+        function updatePriceDisplay() {
+            const priceMinSlider = document.getElementById('priceMin');
+            const priceMaxSlider = document.getElementById('priceMax');
+            let priceMin = parseFloat(priceMinSlider.value);
+            let priceMax = parseFloat(priceMaxSlider.value);
+            
+            // Ensure we have valid numbers
+            if (isNaN(priceMin)) priceMin = parseFloat(priceMinSlider.min) || 0;
+            if (isNaN(priceMax)) priceMax = parseFloat(priceMaxSlider.max) || 1000000;
+            
+            // If min exceeds max, swap them
+            if (priceMin > priceMax) {
+                const temp = priceMin;
+                priceMin = priceMax;
+                priceMax = temp;
+                priceMinSlider.value = priceMin;
+                priceMaxSlider.value = priceMax;
+            }
+            
+            // If max slider is at or near the maximum, show the actual max price from data
+            // This handles step rounding issues
+            if (actualMaxPrice > 0 && priceMax >= actualMaxPrice * 0.99) {
+                priceMax = actualMaxPrice;
+            }
+            
+            document.getElementById('priceMinValue').textContent = priceMin.toLocaleString();
+            document.getElementById('priceMaxValue').textContent = priceMax.toLocaleString();
+
+            // Update the fill between the two sliders
+            updateSliderFill();
+        }
+
+        // Update the visual fill between min and max sliders
+        function updateSliderFill() {
+            const priceMinSlider = document.getElementById('priceMin');
+            const priceMaxSlider = document.getElementById('priceMax');
+            const fill = document.getElementById('priceSliderFill');
+            
+            const min = parseFloat(priceMinSlider.min);
+            const max = parseFloat(priceMinSlider.max);
+            const minValue = parseFloat(priceMinSlider.value);
+            const maxValue = parseFloat(priceMaxSlider.value);
+            
+            const minPercent = ((minValue - min) / (max - min)) * 100;
+            const maxPercent = ((maxValue - min) / (max - min)) * 100;
+            
+            fill.style.left = minPercent + '%';
+            fill.style.width = (maxPercent - minPercent) + '%';
+        }
+
+        // Filter properties
+        function filterProperties() {
+            const areaFilter = document.getElementById('areaFilter').value;
+            const zipcodeFilter = document.getElementById('zipcodeFilter').value;
+            const priceMin = parseInt(document.getElementById('priceMin').value) || 0;
+            const priceMaxValue = document.getElementById('priceMax').value;
+            const priceMax = priceMaxValue ? parseInt(priceMaxValue) : Infinity;
+
+            filteredProperties = allProperties.filter(prop => {
+                // Area filter (city or county)
+                if (areaFilter && prop.city !== areaFilter && prop.county !== areaFilter) {
+                    return false;
+                }
+
+                // Zipcode filter
+                if (zipcodeFilter && prop.zipcode !== parseInt(zipcodeFilter)) {
+                    return false;
+                }
+
+                // Price filter
+                if (prop.price < priceMin || prop.price > priceMax) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            updateStats();
+            displayProperties();
+        }
+
+        // Update statistics
+        function updateStats() {
+            document.getElementById('totalCount').textContent = filteredProperties.length;
+            
+            if (filteredProperties.length > 0) {
+                const prices = filteredProperties.map(p => p.price).filter(p => p > 0);
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                document.getElementById('priceRange').textContent = 
+                    `$${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}`;
+            } else {
+                document.getElementById('priceRange').textContent = '$0 - $0';
+            }
+        }
+
+        // Sort properties
+        function sortProperties() {
+            const sortBy = document.getElementById('sortBy').value;
+            const [field, direction] = sortBy.split('-');
+            
+            filteredProperties.sort((a, b) => {
+                let aValue, bValue;
+                
+                switch (field) {
+                    case 'price':
+                        aValue = a.price || 0;
+                        bValue = b.price || 0;
+                        // If both are 0 or null, maintain order
+                        if (aValue === 0 && bValue === 0) return 0;
+                        break;
+                    case 'zipcode':
+                        aValue = a.zipcode || 0;
+                        bValue = b.zipcode || 0;
+                        break;
+                    case 'maintenance':
+                        aValue = a.maintenance_fee || null;
+                        bValue = b.maintenance_fee || null;
+                        // Properties without maintenance fee go to end
+                        if (aValue === null && bValue === null) return 0;
+                        if (aValue === null) return 1;
+                        if (bValue === null) return -1;
+                        break;
+                    case 'date':
+                        // Parse listing date - handle "Just Listed" and date strings
+                        aValue = parseListingDate(a.listing_date);
+                        bValue = parseListingDate(b.listing_date);
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                if (direction === 'asc') {
+                    return aValue - bValue;
+                } else {
+                    return bValue - aValue;
+                }
+            });
+        }
+
+        // Parse listing date to a sortable value
+        function parseListingDate(dateStr) {
+            if (!dateStr || dateStr === 'Just Listed' || dateStr === '') {
+                return 0; // Treat missing/new listings as oldest
+            }
+            
+            // Try to parse date string
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+                return date.getTime();
+            }
+            
+            // If parsing fails, return 0
+            return 0;
+        }
+
+        // Display properties
+        function displayProperties() {
+            const container = document.getElementById('propertiesContainer');
+
+            if (filteredProperties.length === 0) {
+                container.innerHTML = '<div class="no-results"><h2>No Properties Found</h2><p>Try adjusting your filters</p></div>';
+                return;
+            }
+
+            // Sort before displaying
+            sortProperties();
+
+            container.innerHTML = filteredProperties.map(prop => {
+                const address = prop.street_number && prop.street 
+                    ? `${prop.street_number} ${prop.street}, ${prop.city}, ${prop.state} ${prop.zipcode || ''}`
+                    : `${prop.city}, ${prop.state} ${prop.zipcode || ''}`;
+                
+                const mainImage = prop.images && prop.images.length > 0 
+                    ? prop.images[0] 
+                    : null;
+
+                const imageHtml = mainImage && !mainImage.includes('icon') && !mainImage.includes('svg')
+                    ? `<img src="${mainImage}" alt="Property image" onerror="this.parentElement.innerHTML='<div class=\\'no-image\\'>No Image</div>'">`
+                    : '<div class="no-image">No Image</div>';
+
+                return `
+                    <div class="property-card">
+                        <div class="property-image">
+                            ${imageHtml}
+                        </div>
+                        <div class="property-content">
+                            <div class="property-price">$${prop.price ? prop.price.toLocaleString() : 'N/A'}</div>
+                            <div class="property-address">${address}</div>
+                            <div class="property-details">
+                                ${prop.beds ? `<div class="property-detail-item"><strong>Beds:</strong> ${prop.beds}</div>` : ''}
+                                ${prop.baths ? `<div class="property-detail-item"><strong>Baths:</strong> ${prop.baths}</div>` : ''}
+                                ${prop.sqft ? `<div class="property-detail-item"><strong>Sqft:</strong> ${prop.sqft.toLocaleString()}</div>` : ''}
+                                ${prop.lot_size_sqft ? `<div class="property-detail-item"><strong>Lot:</strong> ${prop.lot_size_sqft.toLocaleString()} sqft</div>` : ''}
+                                ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
+                            </div>
+                            ${prop.property_type ? `<span class="property-type">${prop.property_type}</span>` : ''}
+                            ${prop.maintenance_fee ? `
+                                <div class="property-maintenance">
+                                    <strong>Maintenance:</strong> $${prop.maintenance_fee.toLocaleString()}${prop.maintenance_fee_frequency ? `/${prop.maintenance_fee_frequency}` : ''}
+                                </div>
+                            ` : ''}
+                            ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link">View on HAR.com</a>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Event listeners
+        document.getElementById('areaFilter').addEventListener('change', filterProperties);
+        document.getElementById('zipcodeFilter').addEventListener('change', filterProperties);
+        document.getElementById('sortBy').addEventListener('change', () => {
+            sortProperties();
+            displayProperties();
+        });
+        
+        const priceMinSlider = document.getElementById('priceMin');
+        const priceMaxSlider = document.getElementById('priceMax');
+        
+        priceMinSlider.addEventListener('input', () => {
+            const min = parseFloat(priceMinSlider.value);
+            const max = parseFloat(priceMaxSlider.value);
+            // If min exceeds max, swap them by moving max up
+            if (min > max) {
+                priceMaxSlider.value = min;
+            }
+            updatePriceDisplay();
+            filterProperties();
+        });
+        
+        priceMaxSlider.addEventListener('input', () => {
+            const min = parseFloat(priceMinSlider.value);
+            const max = parseFloat(priceMaxSlider.value);
+            // If max goes below min, swap them by moving min down
+            if (max < min) {
+                priceMinSlider.value = max;
+            }
+            updatePriceDisplay();
+            filterProperties();
+        });
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>
