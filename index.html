@@ -109,7 +109,6 @@
             display: flex;
             align-items: center;
             isolation: isolate;
-            z-index: 0;
         }
 
         .price-slider {
@@ -123,17 +122,14 @@
             appearance: none;
             pointer-events: none;
             transform: translateZ(0);
-            will-change: transform;
         }
 
         #priceMax {
-            z-index: 10;
-            position: relative;
+            z-index: 5;
         }
 
         #priceMin {
-            z-index: 9;
-            position: relative;
+            z-index: 4;
         }
 
         .price-slider::-webkit-slider-runnable-track {
@@ -159,9 +155,8 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             pointer-events: all;
             position: relative;
-            z-index: 100;
+            z-index: 10;
             transform: translateZ(0);
-            will-change: transform;
         }
 
         .price-slider::-moz-range-thumb {
@@ -174,9 +169,8 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             pointer-events: all;
             position: relative;
-            z-index: 100;
+            z-index: 10;
             transform: translateZ(0);
-            will-change: transform;
         }
 
         .price-slider::-webkit-slider-thumb:hover {
@@ -193,7 +187,7 @@
             height: 6px;
             border-radius: 3px;
             background: #dee2e6;
-            z-index: 0;
+            z-index: -1;
             pointer-events: none;
         }
 
@@ -409,10 +403,10 @@
             <div class="filter-group price-slider-container">
                 <label>Price Range</label>
                 <div class="price-slider-wrapper">
-                    <input type="range" id="priceMin" class="price-slider" min="0" max="1000000" step="1000" value="0">
-                    <input type="range" id="priceMax" class="price-slider" min="0" max="1000000" step="1000" value="1000000">
                     <div class="price-slider-track"></div>
                     <div class="price-slider-fill" id="priceSliderFill"></div>
+                    <input type="range" id="priceMin" class="price-slider" min="0" max="1000000" step="1000" value="0">
+                    <input type="range" id="priceMax" class="price-slider" min="0" max="1000000" step="1000" value="1000000">
                 </div>
                 <div class="price-range-display">
                     <span>Min: $<span id="priceMinValue">0</span></span>
@@ -493,7 +487,8 @@
                         street: address.street || '',
                         property_type: detail.property_type || '',
                         beds: detail.beds || null,
-                        baths: detail.baths || null,
+                        full_baths: detail.full_baths || null,
+                        half_baths: detail.half_baths || null,
                         sqft: detail.sqft || null,
                         lot_size_sqft: detail.lot_size_sqft || null,
                         year_built: detail.year_built || null,
@@ -577,11 +572,9 @@
 
                 priceMaxSlider.min = sliderMin;
                 priceMaxSlider.max = sliderMax;
-                // Set slider to maxPrice, clamped to slider range
-                const maxValue = Math.min(sliderMax, Math.max(sliderMin, maxPrice));
-                // Round to nearest step
-                const maxValueSteps = Math.round((maxValue - sliderMin) / step);
-                priceMaxSlider.value = sliderMin + (maxValueSteps * step);
+                // Set slider to nearest step that's >= maxPrice to avoid rounding down
+                const maxValueSteps = Math.ceil(maxPrice / step);
+                priceMaxSlider.value = maxValueSteps * step;
                 priceMaxSlider.step = step;
 
                 // Store actual max price for display purposes
@@ -616,20 +609,17 @@
         function updatePriceDisplay() {
             const priceMinSlider = document.getElementById('priceMin');
             const priceMaxSlider = document.getElementById('priceMax');
-            let priceMin = parseFloat(priceMinSlider.value);
-            let priceMax = parseFloat(priceMaxSlider.value);
+            let priceMin = parseInt(priceMinSlider.value);
+            let priceMax = parseInt(priceMaxSlider.value);
             
-            // Ensure we have valid numbers
-            if (isNaN(priceMin)) priceMin = parseFloat(priceMinSlider.min) || 0;
-            if (isNaN(priceMax)) priceMax = parseFloat(priceMaxSlider.max) || 1000000;
-            
-            // If min exceeds max, swap them
+            // Ensure min doesn't exceed max
             if (priceMin > priceMax) {
-                const temp = priceMin;
                 priceMin = priceMax;
-                priceMax = temp;
-                priceMinSlider.value = priceMin;
-                priceMaxSlider.value = priceMax;
+                priceMinSlider.value = priceMax;
+            }
+            if (priceMax < priceMin) {
+                priceMax = priceMin;
+                priceMaxSlider.value = priceMin;
             }
             
             // If max slider is at or near the maximum, show the actual max price from data
@@ -769,6 +759,26 @@
             return 0;
         }
 
+        // Format baths display
+        function formatBaths(fullBaths, halfBaths) {
+            const full = fullBaths !== null && fullBaths !== undefined ? fullBaths : 0;
+            const half = halfBaths !== null && halfBaths !== undefined ? halfBaths : 0;
+            
+            if (full === 0 && half === 0) {
+                return '';
+            }
+            
+            const parts = [];
+            if (full > 0) {
+                parts.push(`${full} full`);
+            }
+            if (half > 0) {
+                parts.push(`${half} half`);
+            }
+            
+            return parts.join(', ');
+        }
+
         // Display properties
         function displayProperties() {
             const container = document.getElementById('propertiesContainer');
@@ -804,7 +814,7 @@
                             <div class="property-address">${address}</div>
                             <div class="property-details">
                                 ${prop.beds ? `<div class="property-detail-item"><strong>Beds:</strong> ${prop.beds}</div>` : ''}
-                                ${prop.baths ? `<div class="property-detail-item"><strong>Baths:</strong> ${prop.baths}</div>` : ''}
+                                ${(prop.full_baths !== null || prop.half_baths !== null) ? `<div class="property-detail-item"><strong>Baths:</strong> ${formatBaths(prop.full_baths, prop.half_baths)}</div>` : ''}
                                 ${prop.sqft ? `<div class="property-detail-item"><strong>Sqft:</strong> ${prop.sqft.toLocaleString()}</div>` : ''}
                                 ${prop.lot_size_sqft ? `<div class="property-detail-item"><strong>Lot:</strong> ${prop.lot_size_sqft.toLocaleString()} sqft</div>` : ''}
                                 ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
@@ -834,22 +844,20 @@
         const priceMaxSlider = document.getElementById('priceMax');
         
         priceMinSlider.addEventListener('input', () => {
-            const min = parseFloat(priceMinSlider.value);
-            const max = parseFloat(priceMaxSlider.value);
-            // If min exceeds max, swap them by moving max up
+            const min = parseInt(priceMinSlider.value);
+            const max = parseInt(priceMaxSlider.value);
             if (min > max) {
-                priceMaxSlider.value = min;
+                priceMinSlider.value = max;
             }
             updatePriceDisplay();
             filterProperties();
         });
         
         priceMaxSlider.addEventListener('input', () => {
-            const min = parseFloat(priceMinSlider.value);
-            const max = parseFloat(priceMaxSlider.value);
-            // If max goes below min, swap them by moving min down
+            const min = parseInt(priceMinSlider.value);
+            const max = parseInt(priceMaxSlider.value);
             if (max < min) {
-                priceMinSlider.value = max;
+                priceMaxSlider.value = min;
             }
             updatePriceDisplay();
             filterProperties();
