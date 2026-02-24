@@ -414,6 +414,20 @@
                 </div>
             </div>
 
+            <div class="filter-group price-slider-container">
+                <label>Monthly Maintenance Fee Range</label>
+                <div class="price-slider-wrapper">
+                    <div class="price-slider-track"></div>
+                    <div class="price-slider-fill" id="maintenanceSliderFill"></div>
+                    <input type="range" id="maintenanceMin" class="price-slider" min="0" max="5000" step="50" value="0">
+                    <input type="range" id="maintenanceMax" class="price-slider" min="0" max="5000" step="50" value="5000">
+                </div>
+                <div class="price-range-display">
+                    <span>Min: $<span id="maintenanceMinValue">0</span></span>
+                    <span>Max: $<span id="maintenanceMaxValue">0</span></span>
+                </div>
+            </div>
+
             <div class="filter-group">
                 <label for="sortBy">Sort By</label>
                 <select id="sortBy">
@@ -435,6 +449,9 @@
             </div>
             <div class="stat-item">
                 Price range: <strong id="priceRange">$0 - $0</strong>
+            </div>
+            <div class="stat-item">
+                Maintenance range: <strong id="maintenanceRange">$0 - $0</strong>
             </div>
         </div>
 
@@ -471,10 +488,11 @@
                     const detail = prop.detail?.[0] || {};
                     const media = prop.media?.[0] || {};
                     const maintenance = prop.maintenance?.[0] || {};
+                    const pricing = prop.pricing?.[0] || {};
                     
                     return {
                         mls_number: prop.mls_number,
-                        price: prop.price || 0,
+                        price: pricing.price || 0,
                         url: prop.url || '',
                         status: prop.status || '',
                         listing_date: prop.listing_date || '',
@@ -493,8 +511,7 @@
                         lot_size_sqft: detail.lot_size_sqft || null,
                         year_built: detail.year_built || null,
                         images: media.images || [],
-                        maintenance_fee: maintenance.maintenance_fee || null,
-                        maintenance_fee_frequency: maintenance.maintenance_fee_frequency || ''
+                        monthly_maintenance_fee: maintenance.monthly_maintenance_fee || null
                     };
                 });
 
@@ -534,6 +551,62 @@
                 option.textContent = zipcode;
                 zipcodeFilter.appendChild(option);
             });
+
+            // Initialize maintenance fee sliders based on actual data
+            const maintenanceFees = allProperties.map(p => p.monthly_maintenance_fee).filter(f => f !== null && f > 0);
+            if (maintenanceFees.length > 0) {
+                const minMaintenance = Math.min(...maintenanceFees);
+                const maxMaintenance = Math.max(...maintenanceFees);
+                
+                const maintenanceRange = maxMaintenance - minMaintenance;
+                let padding, sliderMin, sliderMax;
+                
+                if (maintenanceRange === 0) {
+                    padding = Math.max(50, Math.floor(minMaintenance * 0.1));
+                    sliderMin = Math.max(0, minMaintenance - padding);
+                    sliderMax = maxMaintenance + padding;
+                } else {
+                    padding = Math.max(50, Math.floor(maintenanceRange * 0.1));
+                    sliderMin = Math.max(0, minMaintenance - padding);
+                    sliderMax = maxMaintenance + padding;
+                }
+                
+                const range = sliderMax - sliderMin;
+                const step = Math.max(10, Math.floor(range / 100));
+
+                const maintenanceMinSlider = document.getElementById('maintenanceMin');
+                const maintenanceMaxSlider = document.getElementById('maintenanceMax');
+
+                maintenanceMinSlider.min = sliderMin;
+                maintenanceMinSlider.max = sliderMax;
+                maintenanceMinSlider.value = minMaintenance;
+                maintenanceMinSlider.step = step;
+
+                const maxValueSteps = Math.ceil(maxMaintenance / step);
+                maintenanceMaxSlider.min = sliderMin;
+                maintenanceMaxSlider.max = sliderMax;
+                maintenanceMaxSlider.value = maxValueSteps * step;
+                maintenanceMaxSlider.step = step;
+
+                actualMaxMaintenance = maxMaintenance;
+
+                document.getElementById('maintenanceMinValue').textContent = minMaintenance.toLocaleString();
+                document.getElementById('maintenanceMaxValue').textContent = maxMaintenance.toLocaleString();
+                
+                updateMaintenanceSliderFill();
+            } else {
+                const maintenanceMinSlider = document.getElementById('maintenanceMin');
+                const maintenanceMaxSlider = document.getElementById('maintenanceMax');
+                maintenanceMinSlider.min = 0;
+                maintenanceMinSlider.max = 5000;
+                maintenanceMinSlider.value = 0;
+                maintenanceMinSlider.step = 50;
+                maintenanceMaxSlider.min = 0;
+                maintenanceMaxSlider.max = 5000;
+                maintenanceMaxSlider.value = 5000;
+                maintenanceMaxSlider.step = 50;
+                updateMaintenanceDisplay();
+            }
 
             // Initialize price sliders based on actual data
             if (prices.length > 0) {
@@ -604,6 +677,7 @@
 
         // Store actual max price from data for display
         let actualMaxPrice = 0;
+        let actualMaxMaintenance = 0;
 
         // Update price slider display values and fill
         function updatePriceDisplay() {
@@ -635,6 +709,35 @@
             updateSliderFill();
         }
 
+        // Update maintenance fee slider display values and fill
+        function updateMaintenanceDisplay() {
+            const maintenanceMinSlider = document.getElementById('maintenanceMin');
+            const maintenanceMaxSlider = document.getElementById('maintenanceMax');
+            let maintenanceMin = parseInt(maintenanceMinSlider.value);
+            let maintenanceMax = parseInt(maintenanceMaxSlider.value);
+            
+            // Ensure min doesn't exceed max
+            if (maintenanceMin > maintenanceMax) {
+                maintenanceMin = maintenanceMax;
+                maintenanceMinSlider.value = maintenanceMax;
+            }
+            if (maintenanceMax < maintenanceMin) {
+                maintenanceMax = maintenanceMin;
+                maintenanceMaxSlider.value = maintenanceMin;
+            }
+            
+            // If max slider is at or near the maximum, show the actual max maintenance from data
+            if (actualMaxMaintenance > 0 && maintenanceMax >= actualMaxMaintenance * 0.99) {
+                maintenanceMax = actualMaxMaintenance;
+            }
+            
+            document.getElementById('maintenanceMinValue').textContent = maintenanceMin.toLocaleString();
+            document.getElementById('maintenanceMaxValue').textContent = maintenanceMax.toLocaleString();
+
+            // Update the fill between the two sliders
+            updateMaintenanceSliderFill();
+        }
+
         // Update the visual fill between min and max sliders
         function updateSliderFill() {
             const priceMinSlider = document.getElementById('priceMin');
@@ -653,6 +756,24 @@
             fill.style.width = (maxPercent - minPercent) + '%';
         }
 
+        // Update the visual fill between min and max maintenance sliders
+        function updateMaintenanceSliderFill() {
+            const maintenanceMinSlider = document.getElementById('maintenanceMin');
+            const maintenanceMaxSlider = document.getElementById('maintenanceMax');
+            const fill = document.getElementById('maintenanceSliderFill');
+            
+            const min = parseFloat(maintenanceMinSlider.min);
+            const max = parseFloat(maintenanceMinSlider.max);
+            const minValue = parseFloat(maintenanceMinSlider.value);
+            const maxValue = parseFloat(maintenanceMaxSlider.value);
+            
+            const minPercent = ((minValue - min) / (max - min)) * 100;
+            const maxPercent = ((maxValue - min) / (max - min)) * 100;
+            
+            fill.style.left = minPercent + '%';
+            fill.style.width = (maxPercent - minPercent) + '%';
+        }
+
         // Filter properties
         function filterProperties() {
             const areaFilter = document.getElementById('areaFilter').value;
@@ -660,6 +781,9 @@
             const priceMin = parseInt(document.getElementById('priceMin').value) || 0;
             const priceMaxValue = document.getElementById('priceMax').value;
             const priceMax = priceMaxValue ? parseInt(priceMaxValue) : Infinity;
+            const maintenanceMin = parseInt(document.getElementById('maintenanceMin').value) || 0;
+            const maintenanceMaxValue = document.getElementById('maintenanceMax').value;
+            const maintenanceMax = maintenanceMaxValue ? parseInt(maintenanceMaxValue) : Infinity;
 
             filteredProperties = allProperties.filter(prop => {
                 // Area filter (city or county)
@@ -677,6 +801,18 @@
                     return false;
                 }
 
+                // Maintenance fee filter (only apply if property has maintenance fee)
+                if (prop.monthly_maintenance_fee !== null && prop.monthly_maintenance_fee !== undefined) {
+                    if (prop.monthly_maintenance_fee < maintenanceMin || prop.monthly_maintenance_fee > maintenanceMax) {
+                        return false;
+                    }
+                } else {
+                    // If property has no maintenance fee, only include if min is 0
+                    if (maintenanceMin > 0) {
+                        return false;
+                    }
+                }
+
                 return true;
             });
 
@@ -690,12 +826,35 @@
             
             if (filteredProperties.length > 0) {
                 const prices = filteredProperties.map(p => p.price).filter(p => p > 0);
-                const minPrice = Math.min(...prices);
-                const maxPrice = Math.max(...prices);
-                document.getElementById('priceRange').textContent = 
-                    `$${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}`;
+                if (prices.length > 0) {
+                    const minPrice = Math.min(...prices);
+                    const maxPrice = Math.max(...prices);
+                    if (minPrice === maxPrice) {
+                        document.getElementById('priceRange').textContent = `$${minPrice.toLocaleString()}`;
+                    } else {
+                        document.getElementById('priceRange').textContent = 
+                            `$${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}`;
+                    }
+                } else {
+                    document.getElementById('priceRange').textContent = '$0 - $0';
+                }
+                
+                const maintenanceFees = filteredProperties.map(p => p.monthly_maintenance_fee).filter(f => f !== null && f !== undefined);
+                if (maintenanceFees.length > 0) {
+                    const minMaintenance = Math.min(...maintenanceFees);
+                    const maxMaintenance = Math.max(...maintenanceFees);
+                    if (minMaintenance === maxMaintenance) {
+                        document.getElementById('maintenanceRange').textContent = `$${minMaintenance.toLocaleString()}`;
+                    } else {
+                        document.getElementById('maintenanceRange').textContent = 
+                            `$${minMaintenance.toLocaleString()} - $${maxMaintenance.toLocaleString()}`;
+                    }
+                } else {
+                    document.getElementById('maintenanceRange').textContent = 'N/A';
+                }
             } else {
                 document.getElementById('priceRange').textContent = '$0 - $0';
+                document.getElementById('maintenanceRange').textContent = '$0 - $0';
             }
         }
 
@@ -719,8 +878,8 @@
                         bValue = b.zipcode || 0;
                         break;
                     case 'maintenance':
-                        aValue = a.maintenance_fee || null;
-                        bValue = b.maintenance_fee || null;
+                        aValue = a.monthly_maintenance_fee || null;
+                        bValue = b.monthly_maintenance_fee || null;
                         // Properties without maintenance fee go to end
                         if (aValue === null && bValue === null) return 0;
                         if (aValue === null) return 1;
@@ -820,9 +979,9 @@
                                 ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
                             </div>
                             ${prop.property_type ? `<span class="property-type">${prop.property_type}</span>` : ''}
-                            ${prop.maintenance_fee ? `
+                            ${prop.monthly_maintenance_fee ? `
                                 <div class="property-maintenance">
-                                    <strong>Maintenance:</strong> $${prop.maintenance_fee.toLocaleString()}${prop.maintenance_fee_frequency ? `/${prop.maintenance_fee_frequency}` : ''}
+                                    <strong>Monthly Maintenance:</strong> $${prop.monthly_maintenance_fee.toLocaleString()}
                                 </div>
                             ` : ''}
                             ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link">View on HAR.com</a>` : ''}
@@ -860,6 +1019,29 @@
                 priceMaxSlider.value = min;
             }
             updatePriceDisplay();
+            filterProperties();
+        });
+        
+        const maintenanceMinSlider = document.getElementById('maintenanceMin');
+        const maintenanceMaxSlider = document.getElementById('maintenanceMax');
+        
+        maintenanceMinSlider.addEventListener('input', () => {
+            const min = parseInt(maintenanceMinSlider.value);
+            const max = parseInt(maintenanceMaxSlider.value);
+            if (min > max) {
+                maintenanceMinSlider.value = max;
+            }
+            updateMaintenanceDisplay();
+            filterProperties();
+        });
+        
+        maintenanceMaxSlider.addEventListener('input', () => {
+            const min = parseInt(maintenanceMinSlider.value);
+            const max = parseInt(maintenanceMaxSlider.value);
+            if (max < min) {
+                maintenanceMaxSlider.value = min;
+            }
+            updateMaintenanceDisplay();
             filterProperties();
         });
 
