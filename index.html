@@ -735,16 +735,29 @@
 
         // Toggle fault points visibility
         window.toggleFaultPoints = function() {
+            // Save current map view to preserve zoom and center
+            let currentCenter = null;
+            let currentZoom = null;
+            if (map) {
+                currentCenter = map.getCenter();
+                currentZoom = map.getZoom();
+            }
+            
             showFaultPoints = !showFaultPoints;
             const btn = document.getElementById('toggleFaultsBtn');
             btn.textContent = showFaultPoints ? '🔴 Hide Fault Points' : '🔴 Show Fault Points';
             btn.classList.toggle('active', showFaultPoints);
             updateLegend();
-            updateMap();
+            updateMap(false); // Pass false to skip fitBounds
+            
+            // Restore previous view after updating markers
+            if (map && currentCenter && currentZoom !== null) {
+                map.setView(currentCenter, currentZoom);
+            }
         };
 
         // Update map with current data
-        function updateMap() {
+        function updateMap(shouldFitBounds = true) {
             if (!map) {
                 console.log('Map not initialized, skipping updateMap');
                 return;
@@ -883,27 +896,29 @@
             
             console.log('Total markers created:', propertyMarkers.length, 'Selected properties:', selectedProperties.size);
             
-            // Fit map to show all markers if there are any
-            const allMarkers = [...faultMarkers, ...propertyMarkers];
-            if (allMarkers.length > 0) {
-                const group = new L.featureGroup(allMarkers);
-                const bounds = group.getBounds();
-                // Use fitBounds with padding and maxZoom to ensure it zooms in
-                map.fitBounds(bounds.pad(0.05), {
-                    maxZoom: 15,
-                    padding: [20, 20]
-                });
-            } else if (propertyMarkers.length > 0) {
-                // If only property markers, fit to those
-                const group = new L.featureGroup(propertyMarkers);
-                const bounds = group.getBounds();
-                map.fitBounds(bounds.pad(0.05), {
-                    maxZoom: 15,
-                    padding: [20, 20]
-                });
-            } else {
-                // If no markers, still zoom in more than default
-                map.setZoom(13);
+            // Fit map to show all markers if there are any (only if shouldFitBounds is true)
+            if (shouldFitBounds) {
+                const allMarkers = [...faultMarkers, ...propertyMarkers];
+                if (allMarkers.length > 0) {
+                    const group = new L.featureGroup(allMarkers);
+                    const bounds = group.getBounds();
+                    // Use fitBounds with padding and maxZoom to ensure it zooms in
+                    map.fitBounds(bounds.pad(0.05), {
+                        maxZoom: 15,
+                        padding: [20, 20]
+                    });
+                } else if (propertyMarkers.length > 0) {
+                    // If only property markers, fit to those
+                    const group = new L.featureGroup(propertyMarkers);
+                    const bounds = group.getBounds();
+                    map.fitBounds(bounds.pad(0.05), {
+                        maxZoom: 15,
+                        padding: [20, 20]
+                    });
+                } else {
+                    // If no markers, still zoom in more than default
+                    map.setZoom(13);
+                }
             }
         }
 
