@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HAR Foreclosure Properties - Property Viewer</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * {
             margin: 0;
@@ -362,6 +366,78 @@
             font-size: 1.2em;
         }
 
+        .map-container {
+            margin: 20px 30px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        .map-container.active {
+            display: block;
+        }
+
+        #map {
+            height: 600px;
+            width: 100%;
+            z-index: 1;
+        }
+
+        .map-toggle {
+            margin: 20px 30px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .map-toggle button {
+            background: #1a5f3f;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .map-toggle button:hover {
+            background: #0d4a2c;
+        }
+
+        .map-toggle button.active {
+            background: #0a3d20;
+        }
+
+        .property-card.selected {
+            border: 3px solid #1a5f3f;
+            box-shadow: 0 4px 12px rgba(26, 95, 63, 0.3);
+        }
+
+        .map-legend {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            font-size: 0.85em;
+        }
+
+        .map-legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .map-legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 2px solid #333;
+        }
+
         @media (max-width: 768px) {
             .filters {
                 grid-template-columns: 1fr;
@@ -455,6 +531,20 @@
             </div>
         </div>
 
+        <div class="map-toggle">
+            <div style="display: flex; gap: 10px;">
+                <button id="toggleMapBtn" onclick="toggleMap()">🗺️ Show Map</button>
+                <button id="toggleFaultsBtn" onclick="toggleFaultPoints()" style="display: none;">🔴 Show Fault Points</button>
+            </div>
+            <div id="selectedCount" style="color: #495057; font-weight: 600;">
+                <span id="selectedCountText">0</span> properties selected
+            </div>
+        </div>
+
+        <div class="map-container" id="mapContainer">
+            <div id="map"></div>
+        </div>
+
         <div id="propertiesContainer" class="properties-grid">
             <div class="loading">Loading properties...</div>
         </div>
@@ -463,6 +553,12 @@
     <script>
         let allProperties = [];
         let filteredProperties = [];
+        let selectedProperties = new Set();
+        let map = null;
+        let faultMarkers = [];
+        let propertyMarkers = [];
+        let faultData = [];
+        let showFaultPoints = false; // Default: hidden
 
         // Load data
         async function loadData() {
@@ -480,15 +576,19 @@
                 
                 const data = await getConsolidatedData();
                 
+                // Load fault data
+                loadFaultData(data);
+                
                 // Extract properties from the nested structure
                 const properties = Object.values(data.data.property || {});
                 allProperties = properties.map(prop => {
-                    const location = prop.location?.[0] || {};
-                    const address = prop.address?.[0] || {};
-                    const detail = prop.detail?.[0] || {};
-                    const media = prop.media?.[0] || {};
-                    const maintenance = prop.maintenance?.[0] || {};
-                    const pricing = prop.pricing?.[0] || {};
+                const location = prop.location?.[0] || {};
+                const address = prop.address?.[0] || {};
+                const detail = prop.detail?.[0] || {};
+                const media = prop.media?.[0] || {};
+                const maintenance = prop.maintenance?.[0] || {};
+                const pricing = prop.pricing?.[0] || {};
+                const geolocation = prop.geolocation?.[0] || {};
                     
                     return {
                         mls_number: prop.mls_number,
@@ -504,23 +604,343 @@
                         street_number: address.street_number || null,
                         street: address.street || '',
                         property_type: detail.property_type || '',
-                        beds: detail.beds || null,
-                        full_baths: detail.full_baths || null,
-                        half_baths: detail.half_baths || null,
+                        beds: detail.beds ?? null,
+                        full_baths: detail.full_baths ?? null,
+                        half_baths: detail.half_baths ?? null,
                         sqft: detail.sqft || null,
                         lot_size_sqft: detail.lot_size_sqft || null,
                         year_built: detail.year_built || null,
                         images: media.images || [],
-                        monthly_maintenance_fee: maintenance.monthly_maintenance_fee || null
+                        monthly_maintenance_fee: maintenance.monthly_maintenance_fee || null,
+                        latitude: geolocation?.latitude ?? location.latitude ?? null,
+                        longitude: geolocation?.longitude ?? location.longitude ?? null,
+                        nearest_fault_meters: geolocation?.nearest_fault_meters ?? null,
+                        nearest_fault_id: geolocation?.nearest_fault_id ?? null
                     };
                 });
 
                 populateFilters();
                 filterProperties();
+                initMap();
+                updateSelection(); // Initialize selection count display
             } catch (error) {
                 console.error('Error loading data:', error);
                 document.getElementById('propertiesContainer').innerHTML = 
                     '<div class="no-results"><h2>Error Loading Data</h2><p>Could not load property data. Make sure consolidated_data.json is available.</p></div>';
+            }
+        }
+
+        // Load fault data from consolidated JSON
+        function loadFaultData(data) {
+            faultData = [];
+            const faultSystems = data.data?.fault_system || {};
+            
+            for (const [systemName, systemData] of Object.entries(faultSystems)) {
+                const faults = systemData.faults || [];
+                for (const fault of faults) {
+                    if (fault.lat && fault.long) {
+                        faultData.push({
+                            id: fault.id,
+                            lat: fault.lat,
+                            lng: fault.long,
+                            systemName: systemName,
+                            description: fault.description || '',
+                            location: fault.location || ''
+                        });
+                    }
+                }
+            }
+        }
+
+        // Initialize map
+        function initMap() {
+            if (map) return; // Already initialized
+            
+            // Center on Houston area with higher zoom level
+            map = L.map('map').setView([29.7604, -95.3698], 12);
+            
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+            
+            // Add legend
+            const legend = L.control({ position: 'bottomright' });
+            legend.onAdd = function() {
+                const div = L.DomUtil.create('div', 'map-legend');
+                div.id = 'mapLegend';
+                updateLegend(div);
+                return div;
+            };
+            legend.addTo(map);
+            
+            updateMap();
+        }
+
+        // Toggle map visibility
+        function toggleMap() {
+            const container = document.getElementById('mapContainer');
+            const btn = document.getElementById('toggleMapBtn');
+            const faultBtn = document.getElementById('toggleFaultsBtn');
+            
+            if (container.classList.contains('active')) {
+                container.classList.remove('active');
+                btn.textContent = '🗺️ Show Map';
+                faultBtn.style.display = 'none';
+            } else {
+                container.classList.add('active');
+                btn.textContent = '🗺️ Hide Map';
+                faultBtn.style.display = 'inline-block';
+                if (!map) {
+                    initMap();
+                    // Wait a bit for map to render, then update and fit bounds
+                    setTimeout(() => {
+                        updateMap();
+                    }, 200);
+                } else {
+                    // Refresh map bounds and update
+                    setTimeout(() => {
+                        map.invalidateSize();
+                        updateMap();
+                    }, 100);
+                }
+            }
+        }
+
+        // Update legend content
+        function updateLegend(div) {
+            if (!div) {
+                div = document.getElementById('mapLegend');
+                if (!div) return;
+            }
+            
+            div.innerHTML = `
+                ${showFaultPoints ? `
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #dc3545;"></div>
+                    <span>Fault Point</span>
+                </div>
+                ` : ''}
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #28a745;"></div>
+                    <span>Property</span>
+                </div>
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #ffc107; border-color: #333;"></div>
+                    <span>Selected Property</span>
+                </div>
+            `;
+        }
+
+        // Toggle fault points visibility
+        window.toggleFaultPoints = function() {
+            showFaultPoints = !showFaultPoints;
+            const btn = document.getElementById('toggleFaultsBtn');
+            btn.textContent = showFaultPoints ? '🔴 Hide Fault Points' : '🔴 Show Fault Points';
+            btn.classList.toggle('active', showFaultPoints);
+            updateLegend();
+            updateMap();
+        };
+
+        // Update map with current data
+        function updateMap() {
+            if (!map) {
+                console.log('Map not initialized, skipping updateMap');
+                return;
+            }
+            
+            console.log('Updating map, selected properties:', Array.from(selectedProperties), 'filtered properties:', filteredProperties.length);
+            
+            // Clear existing markers
+            faultMarkers.forEach(marker => map.removeLayer(marker));
+            propertyMarkers.forEach(marker => map.removeLayer(marker));
+            faultMarkers = [];
+            propertyMarkers = [];
+            
+            // Add fault markers (only if enabled)
+            if (showFaultPoints) {
+                faultData.forEach(fault => {
+                    const marker = L.circleMarker([fault.lat, fault.lng], {
+                        radius: 6,
+                        fillColor: '#dc3545',
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                    
+                    const popup = L.popup().setContent(`
+                        <strong>Fault Point</strong><br>
+                        System: ${fault.systemName}<br>
+                        ${fault.description ? `Description: ${fault.description}<br>` : ''}
+                        ${fault.location ? `Location: ${fault.location}` : ''}
+                    `);
+                    marker.bindPopup(popup);
+                    marker.addTo(map);
+                    faultMarkers.push(marker);
+                });
+            }
+            
+            // Create a set of filtered property MLS numbers for quick lookup
+            const filteredMlsNumbers = new Set(filteredProperties.map(p => {
+                const mlsNum = typeof p.mls_number === 'string' ? parseInt(p.mls_number) : p.mls_number;
+                return mlsNum;
+            }));
+            
+            // Add property markers - show all filtered properties, plus any selected properties that might be filtered out
+            const propertiesToShow = new Map(); // Use Map to store both mlsNum and prop data
+            
+            // Add all filtered properties
+            filteredProperties.forEach(prop => {
+                const mlsNum = typeof prop.mls_number === 'string' ? parseInt(prop.mls_number) : prop.mls_number;
+                if (prop.latitude && prop.longitude) {
+                    propertiesToShow.set(mlsNum, { prop, isFiltered: true });
+                } else {
+                    console.log('Filtered property missing coordinates:', mlsNum, 'lat:', prop.latitude, 'lng:', prop.longitude);
+                }
+            });
+            
+            // Add selected properties that might be filtered out
+            selectedProperties.forEach(mlsNum => {
+                if (!propertiesToShow.has(mlsNum)) {
+                    // Find the property in allProperties
+                    const prop = allProperties.find(p => {
+                        const pMlsNum = typeof p.mls_number === 'string' ? parseInt(p.mls_number) : p.mls_number;
+                        return pMlsNum === mlsNum;
+                    });
+                    if (prop) {
+                        console.log('Found selected property:', mlsNum, 'lat:', prop.latitude, 'lng:', prop.longitude);
+                        if (prop.latitude && prop.longitude) {
+                            propertiesToShow.set(mlsNum, { prop, isFiltered: false });
+                        } else {
+                            console.log('Selected property missing coordinates:', mlsNum);
+                        }
+                    } else {
+                        console.log('Selected property not found in allProperties:', mlsNum);
+                    }
+                }
+            });
+            
+            // Create markers for all properties to show
+            console.log('Properties to show on map:', propertiesToShow.size);
+            propertiesToShow.forEach(({ prop, isFiltered: isFilteredProp }, mlsNum) => {
+                if (!prop) {
+                    console.log('Skipping - no prop data for:', mlsNum);
+                    return;
+                }
+                if (!prop.latitude || !prop.longitude) {
+                    console.log('Skipping property without coordinates:', mlsNum, 'prop keys:', Object.keys(prop));
+                    return;
+                }
+                
+                const isSelected = selectedProperties.has(mlsNum);
+                const isFiltered = isFilteredProp;
+                
+                // Create marker with styling based on selection state
+                const markerOptions = isSelected ? {
+                    radius: 10,
+                    fillColor: '#ffc107',
+                    color: '#fff',
+                    weight: 3,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                } : {
+                    radius: 6,
+                    fillColor: '#28a745',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: isFiltered ? 1 : 0.6,
+                    fillOpacity: isFiltered ? 0.8 : 0.5
+                };
+                
+                const marker = L.circleMarker([prop.latitude, prop.longitude], markerOptions);
+                
+                const address = prop.street_number && prop.street 
+                    ? `${prop.street_number} ${prop.street}, ${prop.city}, ${prop.state} ${prop.zipcode || ''}`
+                    : `${prop.city}, ${prop.state} ${prop.zipcode || ''}`;
+                
+                const popup = L.popup().setContent(`
+                    <strong>$${prop.price ? prop.price.toLocaleString() : 'N/A'}</strong><br>
+                    ${address}<br>
+                    ${prop.beds ? `${prop.beds} bed` : ''} ${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}<br>
+                    ${prop.nearest_fault_meters ? `Nearest fault: ${(prop.nearest_fault_meters / 1000).toFixed(2)} km` : ''}
+                    ${!isFiltered ? '<br><em style="color: #666;">(Filtered out)</em>' : ''}
+                    <br><button onclick="window.togglePropertySelection(${mlsNum}); map.closePopup();" style="margin-top: 5px; padding: 5px 10px; cursor: pointer;">${isSelected ? 'Deselect' : 'Select'}</button>
+                `);
+                
+                marker.bindPopup(popup);
+                marker.on('click', () => {
+                    window.togglePropertySelection(mlsNum);
+                });
+                marker.addTo(map);
+                propertyMarkers.push(marker);
+                
+                if (isSelected) {
+                    console.log('Added SELECTED marker for property:', mlsNum, 'at', prop.latitude, prop.longitude);
+                }
+            });
+            
+            console.log('Total markers created:', propertyMarkers.length, 'Selected properties:', selectedProperties.size);
+            
+            // Fit map to show all markers if there are any
+            const allMarkers = [...faultMarkers, ...propertyMarkers];
+            if (allMarkers.length > 0) {
+                const group = new L.featureGroup(allMarkers);
+                const bounds = group.getBounds();
+                // Use fitBounds with padding and maxZoom to ensure it zooms in
+                map.fitBounds(bounds.pad(0.05), {
+                    maxZoom: 15,
+                    padding: [20, 20]
+                });
+            } else if (propertyMarkers.length > 0) {
+                // If only property markers, fit to those
+                const group = new L.featureGroup(propertyMarkers);
+                const bounds = group.getBounds();
+                map.fitBounds(bounds.pad(0.05), {
+                    maxZoom: 15,
+                    padding: [20, 20]
+                });
+            } else {
+                // If no markers, still zoom in more than default
+                map.setZoom(13);
+            }
+        }
+
+        // Toggle property selection (global function for onclick handlers)
+        window.togglePropertySelection = function(mlsNumber) {
+            // Ensure mlsNumber is a number for consistent comparison
+            const mlsNum = typeof mlsNumber === 'string' ? parseInt(mlsNumber) : mlsNumber;
+            
+            console.log('Toggling selection for property:', mlsNum, 'Current selected:', Array.from(selectedProperties));
+            
+            if (selectedProperties.has(mlsNum)) {
+                selectedProperties.delete(mlsNum);
+                console.log('Deselected property:', mlsNum);
+            } else {
+                selectedProperties.add(mlsNum);
+                console.log('Selected property:', mlsNum, 'Total selected:', selectedProperties.size);
+            }
+            updateSelection();
+        };
+
+        // Update selection display
+        function updateSelection() {
+            // Update count
+            const countElement = document.getElementById('selectedCountText');
+            if (countElement) {
+                countElement.textContent = selectedProperties.size;
+            }
+            
+            // Re-display properties to show selected ones at top
+            displayProperties();
+            
+            // Update map markers - always update if map exists
+            if (map) {
+                updateMap();
+            } else {
+                // If map doesn't exist yet, make sure it gets updated when it's created
+                console.log('Map not initialized yet, will update when map is shown');
             }
         }
 
@@ -864,6 +1284,17 @@
             const [field, direction] = sortBy.split('-');
             
             filteredProperties.sort((a, b) => {
+                // First, prioritize selected properties
+                const aMlsNum = typeof a.mls_number === 'string' ? parseInt(a.mls_number) : a.mls_number;
+                const bMlsNum = typeof b.mls_number === 'string' ? parseInt(b.mls_number) : b.mls_number;
+                const aSelected = selectedProperties.has(aMlsNum);
+                const bSelected = selectedProperties.has(bMlsNum);
+                
+                // If one is selected and the other isn't, selected comes first
+                if (aSelected && !bSelected) return -1;
+                if (!aSelected && bSelected) return 1;
+                
+                // If both are selected or both are not selected, apply normal sorting
                 let aValue, bValue;
                 
                 switch (field) {
@@ -944,10 +1375,11 @@
 
             if (filteredProperties.length === 0) {
                 container.innerHTML = '<div class="no-results"><h2>No Properties Found</h2><p>Try adjusting your filters</p></div>';
+                updateMap();
                 return;
             }
 
-            // Sort before displaying
+            // Sort before displaying (sortProperties now handles selected properties first)
             sortProperties();
 
             container.innerHTML = filteredProperties.map(prop => {
@@ -963,8 +1395,11 @@
                     ? `<img src="${mainImage}" alt="Property image" onerror="this.parentElement.innerHTML='<div class=\\'no-image\\'>No Image</div>'">`
                     : '<div class="no-image">No Image</div>';
 
+                const mlsNum = typeof prop.mls_number === 'string' ? parseInt(prop.mls_number) : prop.mls_number;
+                const isSelected = selectedProperties.has(mlsNum);
+
                 return `
-                    <div class="property-card">
+                    <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${mlsNum}" onclick="window.togglePropertySelection(${mlsNum})">
                         <div class="property-image">
                             ${imageHtml}
                         </div>
@@ -984,11 +1419,17 @@
                                     <strong>Monthly Maintenance:</strong> $${prop.monthly_maintenance_fee.toLocaleString()}
                                 </div>
                             ` : ''}
-                            ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link">View on HAR.com</a>` : ''}
+                            <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link">View on HAR.com</a>` : ''}
+                                ${prop.latitude && prop.longitude ? `<a href="https://msc.fema.gov/portal/firmette?latitude=${prop.latitude}&longitude=${prop.longitude}" target="_blank" class="property-link" style="background: #0066cc;">FEMA Flood Map</a>` : ''}
+                            </div>
                         </div>
                     </div>
                 `;
             }).join('');
+            
+            // Update map after displaying properties
+            updateMap();
         }
 
         // Event listeners
