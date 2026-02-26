@@ -532,9 +532,11 @@
         </div>
 
         <div class="map-toggle">
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
                 <button id="toggleMapBtn" onclick="toggleMap()">🗺️ Show Map</button>
                 <button id="toggleFaultsBtn" onclick="toggleFaultPoints()" style="display: none;">🔴 Show Fault Points</button>
+                <button id="toggleAreasBtn" onclick="toggleGeographicAreas()" style="display: none;">📍 Show Geographic Areas</button>
+                <button id="clearAreaFilterBtn" onclick="clearGeographicAreaFilter()" style="display: none; background: #dc3545;">✕ Clear Area Filter</button>
             </div>
             <div id="selectedCount" style="color: #495057; font-weight: 600;">
                 <span id="selectedCountText">0</span> properties selected
@@ -559,6 +561,10 @@
         let propertyMarkers = [];
         let faultData = [];
         let showFaultPoints = false; // Default: hidden
+        let geographicAreas = [];
+        let geographicAreaLayers = [];
+        let showGeographicAreas = false; // Default: hidden
+        let selectedGeographicArea = null; // Currently selected area for filtering
 
         // Load data
         async function loadData() {
@@ -578,6 +584,9 @@
                 
                 // Load fault data
                 loadFaultData(data);
+                
+                // Load geographic area data
+                loadGeographicAreaData(data);
                 
                 // Extract properties from the nested structure
                 const properties = Object.values(data.data.property || {});
@@ -652,6 +661,100 @@
             }
         }
 
+        function loadGeographicAreaData(data) {
+            geographicAreas = [];
+            const areas = data.data?.geographic_area || {};
+            
+            for (const [areaId, areaData] of Object.entries(areas)) {
+                if (areaData.bounds && areaData.bounds.length > 0) {
+                    geographicAreas.push({
+                        area_id: areaId,
+                        area_type: areaData.area_type || '',
+                        name: areaData.name || '',
+                        description: areaData.description || '',
+                        zip_codes: areaData.zip_codes || [],
+                        notes: areaData.notes || '',
+                        bounds: areaData.bounds || []
+                    });
+                }
+            }
+        }
+
+        // Color mapping for area types
+        const areaTypeColors = {
+            'market_sector': { fill: '#e74c3c', stroke: '#c0392b', opacity: 0.4 },
+            'exurb_hub': { fill: '#3498db', stroke: '#2980b9', opacity: 0.4 },
+            'market_ring': { fill: '#9b59b6', stroke: '#8e44ad', opacity: 0.4 },
+            'neighborhood_polygon': { fill: '#2ecc71', stroke: '#27ae60', opacity: 0.4 },
+            'upcoming_area': { fill: '#f39c12', stroke: '#e67e22', opacity: 0.4 }
+        };
+
+        // Create rectangle from bounds
+        function createBoundsRectangle(bounds) {
+            const { north_lat, south_lat, west_lng, east_lng } = bounds;
+            return [
+                [[south_lat, west_lng], [north_lat, west_lng], [north_lat, east_lng], [south_lat, east_lng], [south_lat, west_lng]]
+            ];
+        }
+
+        // Format area name for display
+        function formatAreaName(name) {
+            return name.split('_').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+        }
+
+        // Check if a property is within a geographic area's bounds
+        function isPropertyInArea(prop, area) {
+            if (!prop.latitude || !prop.longitude) return false;
+            if (!area.bounds || area.bounds.length === 0) return false;
+            
+            // Check if property is within any of the area's bounds
+            return area.bounds.some(bound => {
+                const { north_lat, south_lat, west_lng, east_lng } = bound;
+                return prop.latitude >= south_lat && 
+                       prop.latitude <= north_lat && 
+                       prop.longitude >= west_lng && 
+                       prop.longitude <= east_lng;
+            });
+        }
+
+        // Filter properties by selected geographic area
+        function filterByGeographicArea(area) {
+            selectedGeographicArea = area;
+            filterProperties();
+            updateMap(false);
+        }
+
+        // Filter properties by selected geographic area
+        function filterByGeographicArea(area) {
+            selectedGeographicArea = area;
+            updateAreaFilterButton();
+            filterProperties();
+            updateMap(false);
+        };
+
+        // Clear geographic area filter
+        window.clearGeographicAreaFilter = function() {
+            selectedGeographicArea = null;
+            updateAreaFilterButton();
+            filterProperties();
+            updateMap(false);
+        };
+
+        // Update the clear area filter button visibility
+        function updateAreaFilterButton() {
+            const clearBtn = document.getElementById('clearAreaFilterBtn');
+            if (clearBtn) {
+                if (selectedGeographicArea) {
+                    clearBtn.style.display = 'inline-block';
+                    clearBtn.textContent = `✕ Clear Filter: ${formatAreaName(selectedGeographicArea.name)}`;
+                } else {
+                    clearBtn.style.display = 'none';
+                }
+            }
+        }
+
         // Initialize map
         function initMap() {
             if (map) return; // Already initialized
@@ -684,14 +787,21 @@
             const btn = document.getElementById('toggleMapBtn');
             const faultBtn = document.getElementById('toggleFaultsBtn');
             
+            const areasBtn = document.getElementById('toggleAreasBtn');
+            const clearAreaBtn = document.getElementById('clearAreaFilterBtn');
+            
             if (container.classList.contains('active')) {
                 container.classList.remove('active');
                 btn.textContent = '🗺️ Show Map';
                 faultBtn.style.display = 'none';
+                areasBtn.style.display = 'none';
+                if (clearAreaBtn) clearAreaBtn.style.display = 'none';
             } else {
                 container.classList.add('active');
                 btn.textContent = '🗺️ Hide Map';
                 faultBtn.style.display = 'inline-block';
+                areasBtn.style.display = 'inline-block';
+                updateAreaFilterButton(); // Show clear button if area is selected
                 if (!map) {
                     initMap();
                     // Wait a bit for map to render, then update and fit bounds
@@ -720,6 +830,28 @@
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #dc3545;"></div>
                     <span>Fault Point</span>
+                </div>
+                ` : ''}
+                ${showGeographicAreas ? `
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #e74c3c; border: 2px solid #c0392b;"></div>
+                    <span>Market Sector</span>
+                </div>
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
+                    <span>Exurb Hub</span>
+                </div>
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #9b59b6; border: 2px solid #8e44ad;"></div>
+                    <span>Market Ring</span>
+                </div>
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #2ecc71; border: 2px solid #27ae60;"></div>
+                    <span>Neighborhood</span>
+                </div>
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #f39c12; border: 2px solid #e67e22;"></div>
+                    <span>Upcoming Area</span>
                 </div>
                 ` : ''}
                 <div class="map-legend-item">
@@ -756,6 +888,29 @@
             }
         };
 
+        // Toggle geographic areas visibility
+        window.toggleGeographicAreas = function() {
+            // Save current map view to preserve zoom and center
+            let currentCenter = null;
+            let currentZoom = null;
+            if (map) {
+                currentCenter = map.getCenter();
+                currentZoom = map.getZoom();
+            }
+            
+            showGeographicAreas = !showGeographicAreas;
+            const btn = document.getElementById('toggleAreasBtn');
+            btn.textContent = showGeographicAreas ? '📍 Hide Geographic Areas' : '📍 Show Geographic Areas';
+            btn.classList.toggle('active', showGeographicAreas);
+            updateLegend();
+            updateMap(false); // Pass false to skip fitBounds
+            
+            // Restore previous view after updating markers
+            if (map && currentCenter && currentZoom !== null) {
+                map.setView(currentCenter, currentZoom);
+            }
+        };
+
         // Update map with current data
         function updateMap(shouldFitBounds = true) {
             if (!map) {
@@ -765,11 +920,13 @@
             
             console.log('Updating map, selected properties:', Array.from(selectedProperties), 'filtered properties:', filteredProperties.length);
             
-            // Clear existing markers
+            // Clear existing markers and layers
             faultMarkers.forEach(marker => map.removeLayer(marker));
             propertyMarkers.forEach(marker => map.removeLayer(marker));
+            geographicAreaLayers.forEach(layer => map.removeLayer(layer));
             faultMarkers = [];
             propertyMarkers = [];
+            geographicAreaLayers = [];
             
             // Add fault markers (only if enabled)
             if (showFaultPoints) {
@@ -792,6 +949,88 @@
                     marker.bindPopup(popup);
                     marker.addTo(map);
                     faultMarkers.push(marker);
+                });
+            }
+
+            // Add geographic area polygons (only if enabled)
+            if (showGeographicAreas) {
+                geographicAreas.forEach(area => {
+                    if (!area.bounds || area.bounds.length === 0) return;
+                    
+                    const areaType = area.area_type;
+                    const isSelected = selectedGeographicArea && selectedGeographicArea.area_id === area.area_id;
+                    const colors = areaTypeColors[areaType] || { fill: '#95a5a6', stroke: '#7f8c8d', opacity: 0.4 };
+                    
+                    // Highlight selected area
+                    const polygonColors = isSelected ? {
+                        fill: colors.fill,
+                        stroke: colors.stroke,
+                        opacity: 0.7,
+                        weight: 4
+                    } : {
+                        fill: colors.fill,
+                        stroke: colors.stroke,
+                        opacity: colors.opacity,
+                        weight: 2
+                    };
+                    
+                    // Process each bound (most areas have one, but handle multiple)
+                    area.bounds.forEach(bound => {
+                        const rectangle = createBoundsRectangle(bound);
+                        
+                        const polygon = L.polygon(rectangle, {
+                            color: polygonColors.stroke,
+                            fillColor: polygonColors.fill,
+                            fillOpacity: polygonColors.opacity,
+                            weight: polygonColors.weight
+                        });
+                        
+                        // Store area data on polygon for click handling
+                        polygon.areaData = area;
+                        
+                        // Create popup content with filter option
+                        const zipCodes = area.zip_codes ? area.zip_codes.join(', ') : 'N/A';
+                        const areaIdEscaped = area.area_id.replace(/'/g, "\\'");
+                        const popupContent = `
+                            <div style="min-width: 200px;">
+                                <h3 style="margin: 0 0 10px 0; color: ${colors.stroke};">${formatAreaName(area.name)}</h3>
+                                <p style="margin: 5px 0;"><strong>Type:</strong> ${formatAreaName(areaType)}</p>
+                                <p style="margin: 5px 0;"><strong>Description:</strong> ${area.description || 'N/A'}</p>
+                                ${area.zip_codes ? `<p style="margin: 5px 0;"><strong>ZIP Codes:</strong> ${zipCodes}</p>` : ''}
+                                ${area.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${area.notes}</p>` : ''}
+                                <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+                                <p style="margin: 5px 0; font-size: 0.9em; color: #666;">
+                                    <em>Click area to ${isSelected ? 'clear filter' : 'filter properties'}</em>
+                                </p>
+                            </div>
+                        `;
+                        
+                        polygon.bindPopup(popupContent);
+                        
+                        // Add click handler to filter properties
+                        polygon.on('click', function(e) {
+                            if (selectedGeographicArea && selectedGeographicArea.area_id === area.area_id) {
+                                // Clicking the same area clears the filter
+                                clearGeographicAreaFilter();
+                            } else {
+                                // Filter by this area
+                                filterByGeographicArea(area);
+                            }
+                        });
+                        
+                        // Change cursor on hover
+                        polygon.on('mouseover', function() {
+                            this.setStyle({ cursor: 'pointer' });
+                            map.getContainer().style.cursor = 'pointer';
+                        });
+                        
+                        polygon.on('mouseout', function() {
+                            map.getContainer().style.cursor = '';
+                        });
+                        
+                        polygon.addTo(map);
+                        geographicAreaLayers.push(polygon);
+                    });
                 });
             }
             
@@ -898,26 +1137,26 @@
             
             // Fit map to show all markers if there are any (only if shouldFitBounds is true)
             if (shouldFitBounds) {
-                const allMarkers = [...faultMarkers, ...propertyMarkers];
-                if (allMarkers.length > 0) {
-                    const group = new L.featureGroup(allMarkers);
-                    const bounds = group.getBounds();
-                    // Use fitBounds with padding and maxZoom to ensure it zooms in
-                    map.fitBounds(bounds.pad(0.05), {
-                        maxZoom: 15,
-                        padding: [20, 20]
-                    });
-                } else if (propertyMarkers.length > 0) {
-                    // If only property markers, fit to those
-                    const group = new L.featureGroup(propertyMarkers);
-                    const bounds = group.getBounds();
-                    map.fitBounds(bounds.pad(0.05), {
-                        maxZoom: 15,
-                        padding: [20, 20]
-                    });
-                } else {
-                    // If no markers, still zoom in more than default
-                    map.setZoom(13);
+            const allMarkers = [...faultMarkers, ...propertyMarkers];
+            if (allMarkers.length > 0) {
+                const group = new L.featureGroup(allMarkers);
+                const bounds = group.getBounds();
+                // Use fitBounds with padding and maxZoom to ensure it zooms in
+                map.fitBounds(bounds.pad(0.05), {
+                    maxZoom: 15,
+                    padding: [20, 20]
+                });
+            } else if (propertyMarkers.length > 0) {
+                // If only property markers, fit to those
+                const group = new L.featureGroup(propertyMarkers);
+                const bounds = group.getBounds();
+                map.fitBounds(bounds.pad(0.05), {
+                    maxZoom: 15,
+                    padding: [20, 20]
+                });
+            } else {
+                // If no markers, still zoom in more than default
+                map.setZoom(13);
                 }
             }
         }
@@ -1221,6 +1460,13 @@
             const maintenanceMax = maintenanceMaxValue ? parseInt(maintenanceMaxValue) : Infinity;
 
             filteredProperties = allProperties.filter(prop => {
+                // Geographic area filter (if an area is selected)
+                if (selectedGeographicArea) {
+                    if (!isPropertyInArea(prop, selectedGeographicArea)) {
+                        return false;
+                    }
+                }
+
                 // Area filter (city or county)
                 if (areaFilter && prop.city !== areaFilter && prop.county !== areaFilter) {
                     return false;
