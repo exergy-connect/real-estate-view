@@ -428,6 +428,22 @@
             display: flex;
             align-items: center;
             margin: 5px 0;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+
+        .map-legend-item:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .map-legend-item.hidden {
+            opacity: 0.5;
+        }
+
+        .map-legend-item.hidden span {
+            text-decoration: line-through;
         }
 
         .map-legend-color {
@@ -436,6 +452,26 @@
             border-radius: 50%;
             margin-right: 8px;
             border: 2px solid #333;
+        }
+
+        .flood-risk-icon {
+            background: transparent;
+            border: none;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+            pointer-events: none; /* Allow clicks to pass through to underlying marker */
+        }
+
+        .area-tooltip {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            padding: 8px;
+            pointer-events: none;
+        }
+
+        .area-tooltip::before {
+            border-top-color: #ccc;
         }
 
         @media (max-width: 768px) {
@@ -532,14 +568,23 @@
         </div>
 
         <div class="map-toggle">
-            <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button id="toggleMapBtn" onclick="toggleMap()">🗺️ Show Map</button>
                 <button id="toggleFaultsBtn" onclick="toggleFaultPoints()" style="display: none;">🔴 Show Fault Points</button>
                 <button id="toggleAreasBtn" onclick="toggleGeographicAreas()" style="display: none;">📍 Show Geographic Areas</button>
                 <button id="clearAreaFilterBtn" onclick="clearGeographicAreaFilter()" style="display: none; background: #dc3545;">✕ Clear Area Filter</button>
             </div>
-            <div id="selectedCount" style="color: #495057; font-weight: 600;">
-                <span id="selectedCountText">0</span> properties selected
+            <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                <div id="faultDistanceSliderContainer" style="display: none; min-width: 200px; max-width: 400px;">
+                    <label for="faultDistanceMin" style="display: block; margin-bottom: 5px; font-size: 0.9em; color: #495057;">
+                        Min Distance to Fault: <span id="faultDistanceValue">0</span> m
+                    </label>
+                    <input type="range" id="faultDistanceMin" min="0" step="100" value="0" 
+                           style="width: 100%; cursor: pointer;">
+                </div>
+                <div id="selectedCount" style="color: #495057; font-weight: 600;">
+                    <span id="selectedCountText">0</span> properties selected
+                </div>
             </div>
         </div>
 
@@ -564,7 +609,16 @@
         let geographicAreas = [];
         let geographicAreaLayers = [];
         let showGeographicAreas = false; // Default: hidden
-        let selectedGeographicArea = null; // Currently selected area for filtering
+        let selectedGeographicArea = null; // Currently selected area for filtering (inclusion or exclusion)
+        // Track visibility of each area type
+        let visibleAreaTypes = {
+            'market_sector': true,
+            'exurb_hub': true,
+            'market_ring': true,
+            'neighborhood_polygon': true,
+            'upcoming_area': true,
+            'flood_risk': true
+        };
 
         // Load data
         async function loadData() {
@@ -628,6 +682,26 @@
                     };
                 });
 
+                // Calculate maximum fault distance
+                const faultDistances = allProperties
+                    .map(p => p.nearest_fault_meters)
+                    .filter(d => d !== null && d !== undefined);
+                if (faultDistances.length > 0) {
+                    actualMaxFaultDistance = Math.max(...faultDistances);
+                    // Round up to nearest 100 meters for cleaner slider
+                    actualMaxFaultDistance = Math.ceil(actualMaxFaultDistance / 100) * 100;
+                    
+                    // Update fault distance slider max and initial display
+                    const faultSlider = document.getElementById('faultDistanceMin');
+                    const faultValueDisplay = document.getElementById('faultDistanceValue');
+                    if (faultSlider) {
+                        faultSlider.max = actualMaxFaultDistance;
+                        if (faultValueDisplay) {
+                            faultValueDisplay.textContent = '0';
+                        }
+                    }
+                }
+                
                 populateFilters();
                 filterProperties();
                 initMap();
@@ -665,9 +739,11 @@
             geographicAreas = [];
             const areas = data.data?.geographic_area || {};
             
+            console.log('Loading geographic areas, total areas found:', Object.keys(areas).length);
+            
             for (const [areaId, areaData] of Object.entries(areas)) {
                 if (areaData.bounds && areaData.bounds.length > 0) {
-                    geographicAreas.push({
+                    const area = {
                         area_id: areaId,
                         area_type: areaData.area_type || '',
                         name: areaData.name || '',
@@ -675,9 +751,16 @@
                         zip_codes: areaData.zip_codes || [],
                         notes: areaData.notes || '',
                         bounds: areaData.bounds || []
-                    });
+                    };
+                    geographicAreas.push(area);
+                    if (areaData.area_type === 'flood_risk') {
+                        console.log('Loaded flood risk area:', areaId, area);
+                    }
                 }
             }
+            
+            console.log('Total geographic areas loaded:', geographicAreas.length);
+            console.log('Flood risk areas:', geographicAreas.filter(a => a.area_type === 'flood_risk').length);
         }
 
         // Color mapping for area types
@@ -686,7 +769,8 @@
             'exurb_hub': { fill: '#3498db', stroke: '#2980b9', opacity: 0.4 },
             'market_ring': { fill: '#9b59b6', stroke: '#8e44ad', opacity: 0.4 },
             'neighborhood_polygon': { fill: '#2ecc71', stroke: '#27ae60', opacity: 0.4 },
-            'upcoming_area': { fill: '#f39c12', stroke: '#e67e22', opacity: 0.4 }
+            'upcoming_area': { fill: '#f39c12', stroke: '#e67e22', opacity: 0.4 },
+            'flood_risk': { fill: '#e67e22', stroke: '#d35400', opacity: 0.6 }
         };
 
         // Create rectangle from bounds
@@ -719,14 +803,19 @@
             });
         }
 
-        // Filter properties by selected geographic area
-        function filterByGeographicArea(area) {
-            selectedGeographicArea = area;
-            filterProperties();
-            updateMap(false);
+        // Check if a property is in any flood risk area
+        function isPropertyInFloodRiskArea(prop) {
+            if (!prop.latitude || !prop.longitude) return false;
+            
+            return geographicAreas.some(area => {
+                if (area.area_type === 'flood_risk') {
+                    return isPropertyInArea(prop, area);
+                }
+                return false;
+            });
         }
 
-        // Filter properties by selected geographic area
+        // Filter properties by selected geographic area (inclusion or exclusion based on area type)
         function filterByGeographicArea(area) {
             selectedGeographicArea = area;
             updateAreaFilterButton();
@@ -748,12 +837,24 @@
             if (clearBtn) {
                 if (selectedGeographicArea) {
                     clearBtn.style.display = 'inline-block';
-                    clearBtn.textContent = `✕ Clear Filter: ${formatAreaName(selectedGeographicArea.name)}`;
+                    const isExclusion = selectedGeographicArea.area_type === 'flood_risk';
+                    if (isExclusion) {
+                        clearBtn.textContent = `✕ Clear Exclude: All Flood Risk Areas`;
+                    } else {
+                        clearBtn.textContent = `✕ Clear Filter: ${formatAreaName(selectedGeographicArea.name)}`;
+                    }
                 } else {
                     clearBtn.style.display = 'none';
                 }
             }
         }
+
+        // Toggle visibility of a specific area type
+        window.toggleAreaTypeVisibility = function(areaType) {
+            visibleAreaTypes[areaType] = !visibleAreaTypes[areaType];
+            updateLegend();
+            updateMap(false);
+        };
 
         // Initialize map
         function initMap() {
@@ -790,17 +891,23 @@
             const areasBtn = document.getElementById('toggleAreasBtn');
             const clearAreaBtn = document.getElementById('clearAreaFilterBtn');
             
+            const faultDistanceContainer = document.getElementById('faultDistanceSliderContainer');
+            
             if (container.classList.contains('active')) {
                 container.classList.remove('active');
                 btn.textContent = '🗺️ Show Map';
                 faultBtn.style.display = 'none';
                 areasBtn.style.display = 'none';
                 if (clearAreaBtn) clearAreaBtn.style.display = 'none';
+                if (faultDistanceContainer) faultDistanceContainer.style.display = 'none';
             } else {
                 container.classList.add('active');
                 btn.textContent = '🗺️ Hide Map';
                 faultBtn.style.display = 'inline-block';
                 areasBtn.style.display = 'inline-block';
+                if (faultDistanceContainer && actualMaxFaultDistance > 0) {
+                    faultDistanceContainer.style.display = 'block';
+                }
                 updateAreaFilterButton(); // Show clear button if area is selected
                 if (!map) {
                     initMap();
@@ -833,30 +940,50 @@
                 </div>
                 ` : ''}
                 ${showGeographicAreas ? `
-                <div class="map-legend-item">
+                <div class="map-legend-item ${!visibleAreaTypes.market_sector ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('market_sector')" 
+                     title="Click to show/hide Market Sectors">
                     <div class="map-legend-color" style="background: #e74c3c; border: 2px solid #c0392b;"></div>
                     <span>Market Sector</span>
                 </div>
-                <div class="map-legend-item">
+                <div class="map-legend-item ${!visibleAreaTypes.exurb_hub ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('exurb_hub')" 
+                     title="Click to show/hide Exurb Hubs">
                     <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
                     <span>Exurb Hub</span>
                 </div>
-                <div class="map-legend-item">
+                <div class="map-legend-item ${!visibleAreaTypes.market_ring ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('market_ring')" 
+                     title="Click to show/hide Market Rings">
                     <div class="map-legend-color" style="background: #9b59b6; border: 2px solid #8e44ad;"></div>
                     <span>Market Ring</span>
                 </div>
-                <div class="map-legend-item">
+                <div class="map-legend-item ${!visibleAreaTypes.neighborhood_polygon ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('neighborhood_polygon')" 
+                     title="Click to show/hide Neighborhoods">
                     <div class="map-legend-color" style="background: #2ecc71; border: 2px solid #27ae60;"></div>
                     <span>Neighborhood</span>
                 </div>
-                <div class="map-legend-item">
+                <div class="map-legend-item ${!visibleAreaTypes.upcoming_area ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('upcoming_area')" 
+                     title="Click to show/hide Upcoming Areas">
                     <div class="map-legend-color" style="background: #f39c12; border: 2px solid #e67e22;"></div>
                     <span>Upcoming Area</span>
+                </div>
+                <div class="map-legend-item ${!visibleAreaTypes.flood_risk ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('flood_risk')" 
+                     title="Click to show/hide Flood Risk Areas">
+                    <div class="map-legend-color" style="background: #e67e22; border: 2px solid #d35400;"></div>
+                    <span>Flood Risk</span>
                 </div>
                 ` : ''}
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #28a745;"></div>
                     <span>Property</span>
+                </div>
+                <div class="map-legend-item">
+                    <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
+                    <span>🌊 Flood Risk Property</span>
                 </div>
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #ffc107; border-color: #333;"></div>
@@ -952,12 +1079,25 @@
                 });
             }
 
-            // Add geographic area polygons (only if enabled)
+            // Add geographic area polygons (only if enabled and area type is visible)
             if (showGeographicAreas) {
+                console.log('Rendering geographic areas, showGeographicAreas:', showGeographicAreas, 'total areas:', geographicAreas.length);
                 geographicAreas.forEach(area => {
                     if (!area.bounds || area.bounds.length === 0) return;
                     
                     const areaType = area.area_type;
+                    // Skip if this area type is hidden
+                    if (!visibleAreaTypes[areaType]) {
+                        if (areaType === 'flood_risk') {
+                            console.log('Skipping flood_risk area (hidden):', area.area_id);
+                        }
+                        return;
+                    }
+                    
+                    if (areaType === 'flood_risk') {
+                        console.log('Rendering flood_risk area:', area.area_id, 'bounds:', area.bounds);
+                    }
+                    
                     const isSelected = selectedGeographicArea && selectedGeographicArea.area_id === area.area_id;
                     const colors = areaTypeColors[areaType] || { fill: '#95a5a6', stroke: '#7f8c8d', opacity: 0.4 };
                     
@@ -988,7 +1128,7 @@
                         // Store area data on polygon for click handling
                         polygon.areaData = area;
                         
-                        // Create popup content with filter option
+                        // Create popup and tooltip content
                         const zipCodes = area.zip_codes ? area.zip_codes.join(', ') : 'N/A';
                         const areaIdEscaped = area.area_id.replace(/'/g, "\\'");
                         const popupContent = `
@@ -1000,12 +1140,29 @@
                                 ${area.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${area.notes}</p>` : ''}
                                 <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
                                 <p style="margin: 5px 0; font-size: 0.9em; color: #666;">
-                                    <em>Click area to ${isSelected ? 'clear filter' : 'filter properties'}</em>
+                                    <em>Click area to ${isSelected ? 'clear filter' : (areaType === 'flood_risk' ? 'exclude all flood risk properties' : 'filter properties here')}</em>
                                 </p>
                             </div>
                         `;
                         
                         polygon.bindPopup(popupContent);
+                        
+                        // Create tooltip content for hover
+                        const tooltipContent = `
+                            <div style="font-size: 12px; max-width: 200px;">
+                                <strong style="color: ${colors.stroke};">${formatAreaName(area.name)}</strong><br>
+                                <span style="color: #666;">${formatAreaName(areaType)}</span><br>
+                                ${area.description ? `<span style="color: #666; font-size: 11px;">${area.description}</span><br>` : ''}
+                                ${area.zip_codes ? `<span style="color: #666; font-size: 11px;">ZIP: ${zipCodes}</span>` : ''}
+                            </div>
+                        `;
+                        
+                        polygon.bindTooltip(tooltipContent, {
+                            permanent: false,
+                            direction: 'top',
+                            className: 'area-tooltip',
+                            offset: [0, -10]
+                        });
                         
                         // Add click handler to filter properties
                         polygon.on('click', function(e) {
@@ -1088,25 +1245,61 @@
                 
                 const isSelected = selectedProperties.has(mlsNum);
                 const isFiltered = isFilteredProp;
+                const isInFloodRisk = isPropertyInFloodRiskArea(prop);
                 
-                // Create marker with styling based on selection state
-                const markerOptions = isSelected ? {
-                    radius: 10,
-                    fillColor: '#ffc107',
-                    color: '#fff',
-                    weight: 3,
-                    opacity: 1,
-                    fillOpacity: 0.9
-                } : {
-                    radius: 6,
-                    fillColor: '#28a745',
-                    color: '#fff',
-                    weight: 2,
-                    opacity: isFiltered ? 1 : 0.6,
-                    fillOpacity: isFiltered ? 0.8 : 0.5
-                };
+                // Create marker with styling based on selection state and flood risk
+                let markerOptions;
+                if (isSelected) {
+                    markerOptions = {
+                        radius: 10,
+                        fillColor: '#ffc107',
+                        color: '#fff',
+                        weight: 3,
+                        opacity: 1,
+                        fillOpacity: 0.9
+                    };
+                } else if (isInFloodRisk) {
+                    // Flood risk properties get blue/water color
+                    markerOptions = {
+                        radius: 7,
+                        fillColor: '#3498db',
+                        color: '#2980b9',
+                        weight: 3,
+                        opacity: isFiltered ? 1 : 0.7,
+                        fillOpacity: isFiltered ? 0.9 : 0.6
+                    };
+                } else {
+                    markerOptions = {
+                        radius: 6,
+                        fillColor: '#28a745',
+                        color: '#fff',
+                        weight: 2,
+                        opacity: isFiltered ? 1 : 0.6,
+                        fillOpacity: isFiltered ? 0.8 : 0.5
+                    };
+                }
                 
                 const marker = L.circleMarker([prop.latitude, prop.longitude], markerOptions);
+                
+                // Add crashing wave icon for flood risk properties
+                if (isInFloodRisk && !isSelected) {
+                    // Create a custom div icon with crashing wave emoji
+                    const waterIcon = L.divIcon({
+                        className: 'flood-risk-icon',
+                        html: '<div style="font-size: 16px; text-align: center; line-height: 1; pointer-events: none;">🌊</div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    
+                    // Add the water icon as an additional marker
+                    const waterMarker = L.marker([prop.latitude, prop.longitude], {
+                        icon: waterIcon,
+                        zIndexOffset: 1000, // Make sure it appears on top
+                        interactive: false // Make marker non-interactive so clicks pass through
+                    });
+                    waterMarker.addTo(map);
+                    propertyMarkers.push(waterMarker);
+                }
                 
                 const address = prop.street_number && prop.street 
                     ? `${prop.street_number} ${prop.street}, ${prop.city}, ${prop.state} ${prop.zipcode || ''}`
@@ -1117,6 +1310,7 @@
                     ${address}<br>
                     ${prop.beds ? `${prop.beds} bed` : ''} ${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}<br>
                     ${prop.nearest_fault_meters ? `Nearest fault: ${(prop.nearest_fault_meters / 1000).toFixed(2)} km` : ''}
+                    ${isInFloodRisk ? '<br><span style="color: #e74c3c; font-weight: bold;">⚠️ High Flood Risk Area</span>' : ''}
                     ${!isFiltered ? '<br><em style="color: #666;">(Filtered out)</em>' : ''}
                     <br><button onclick="window.togglePropertySelection(${mlsNum}); map.closePopup();" style="margin-top: 5px; padding: 5px 10px; cursor: pointer;">${isSelected ? 'Deselect' : 'Select'}</button>
                 `);
@@ -1352,6 +1546,7 @@
         // Store actual max price from data for display
         let actualMaxPrice = 0;
         let actualMaxMaintenance = 0;
+        let actualMaxFaultDistance = 0; // Maximum fault distance in meters
 
         // Update price slider display values and fill
         function updatePriceDisplay() {
@@ -1459,10 +1654,34 @@
             const maintenanceMaxValue = document.getElementById('maintenanceMax').value;
             const maintenanceMax = maintenanceMaxValue ? parseInt(maintenanceMaxValue) : Infinity;
 
+            // Get fault distance filter
+            const faultDistanceMin = parseInt(document.getElementById('faultDistanceMin').value) || 0;
+
             filteredProperties = allProperties.filter(prop => {
                 // Geographic area filter (if an area is selected)
                 if (selectedGeographicArea) {
-                    if (!isPropertyInArea(prop, selectedGeographicArea)) {
+                    // Flood risk areas act as exclusion filters - exclude ALL flood risk areas
+                    if (selectedGeographicArea.area_type === 'flood_risk') {
+                        // Check if property is in ANY flood risk area, not just the selected one
+                        if (isPropertyInFloodRiskArea(prop)) {
+                            return false; // Exclude properties within any flood risk area
+                        }
+                    } else {
+                        // Other area types act as inclusion filters
+                        const isInArea = isPropertyInArea(prop, selectedGeographicArea);
+                        if (!isInArea) {
+                            return false;
+                        }
+                    }
+                }
+
+                // Fault distance filter
+                if (faultDistanceMin > 0) {
+                    if (prop.nearest_fault_meters === null || prop.nearest_fault_meters === undefined) {
+                        // Exclude properties without fault distance data if minimum is set
+                        return false;
+                    }
+                    if (prop.nearest_fault_meters < faultDistanceMin) {
                         return false;
                     }
                 }
@@ -1658,14 +1877,19 @@
 
                 const mlsNum = typeof prop.mls_number === 'string' ? parseInt(prop.mls_number) : prop.mls_number;
                 const isSelected = selectedProperties.has(mlsNum);
+                const isInFloodRisk = isPropertyInFloodRiskArea(prop);
 
                 return `
                     <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${mlsNum}" onclick="window.togglePropertySelection(${mlsNum})">
                         <div class="property-image">
                             ${imageHtml}
+                            ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 18px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">🌊</div>' : ''}
                         </div>
                         <div class="property-content">
-                            <div class="property-price">$${prop.price ? prop.price.toLocaleString() : 'N/A'}</div>
+                            <div class="property-price">
+                                $${prop.price ? prop.price.toLocaleString() : 'N/A'}
+                                ${isInFloodRisk ? ' <span style="color: #e74c3c; font-size: 0.8em; margin-left: 8px;" title="High Flood Risk Area">🌊</span>' : ''}
+                            </div>
                             <div class="property-address">${address}</div>
                             <div class="property-details">
                                 ${prop.beds ? `<div class="property-detail-item"><strong>Beds:</strong> ${prop.beds}</div>` : ''}
@@ -1681,8 +1905,8 @@
                                 </div>
                             ` : ''}
                             <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                                ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link">View on HAR.com</a>` : ''}
-                                ${prop.latitude && prop.longitude ? `<a href="https://msc.fema.gov/portal/firmette?latitude=${prop.latitude}&longitude=${prop.longitude}" target="_blank" class="property-link" style="background: #0066cc;">FEMA Flood Map</a>` : ''}
+                                ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link" onclick="event.stopPropagation()">View on HAR.com</a>` : ''}
+                                ${prop.latitude && prop.longitude ? `<a href="https://msc.fema.gov/portal/firmette?latitude=${prop.latitude}&longitude=${prop.longitude}" target="_blank" class="property-link" style="background: #0066cc;" onclick="event.stopPropagation()">FEMA Flood Map (2007)</a>` : ''}
                             </div>
                         </div>
                     </div>
@@ -1746,6 +1970,16 @@
             updateMaintenanceDisplay();
             filterProperties();
         });
+
+        // Fault distance slider
+        const faultDistanceSlider = document.getElementById('faultDistanceMin');
+        if (faultDistanceSlider) {
+            faultDistanceSlider.addEventListener('input', () => {
+                const value = parseInt(faultDistanceSlider.value);
+                document.getElementById('faultDistanceValue').textContent = value.toLocaleString();
+                filterProperties();
+            });
+        }
 
         // Load data on page load
         loadData();
