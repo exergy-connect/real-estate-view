@@ -468,6 +468,12 @@
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             padding: 8px;
             pointer-events: none;
+            min-width: 200px !important;
+            max-width: 350px !important;
+            width: auto !important;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: normal;
         }
 
         .area-tooltip::before {
@@ -502,6 +508,18 @@
                 <label for="areaFilter">Area (City/County)</label>
                 <select id="areaFilter">
                     <option value="">All Areas</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="propertyTypeFilter">Property Type</label>
+                <select id="propertyTypeFilter">
+                    <option value="">All Types</option>
+                    <option value="Single-Family">Single-Family</option>
+                    <option value="Multi-Family">Multi-Family</option>
+                    <option value="Townhouse">Townhouse</option>
+                    <option value="Condo">Condo</option>
+                    <option value="Land">Land</option>
                 </select>
             </div>
 
@@ -1149,11 +1167,11 @@
                         
                         // Create tooltip content for hover
                         const tooltipContent = `
-                            <div style="font-size: 12px; max-width: 200px;">
-                                <strong style="color: ${colors.stroke};">${formatAreaName(area.name)}</strong><br>
-                                <span style="color: #666;">${formatAreaName(areaType)}</span><br>
-                                ${area.description ? `<span style="color: #666; font-size: 11px;">${area.description}</span><br>` : ''}
-                                ${area.zip_codes ? `<span style="color: #666; font-size: 11px;">ZIP: ${zipCodes}</span>` : ''}
+                            <div style="font-size: 12px; min-width: 200px; max-width: 350px; word-wrap: break-word; overflow-wrap: break-word;">
+                                <strong style="color: ${colors.stroke}; display: block; margin-bottom: 4px;">${formatAreaName(area.name)}</strong>
+                                <span style="color: #666; display: block; margin-bottom: 4px;">${formatAreaName(areaType)}</span>
+                                ${area.description ? `<span style="color: #666; font-size: 11px; display: block; margin-bottom: 4px; word-wrap: break-word;">${area.description}</span>` : ''}
+                                ${area.zip_codes ? `<span style="color: #666; font-size: 11px; display: block;">ZIP: ${zipCodes}</span>` : ''}
                             </div>
                         `;
                         
@@ -1646,6 +1664,7 @@
         // Filter properties
         function filterProperties() {
             const areaFilter = document.getElementById('areaFilter').value;
+            const propertyTypeFilter = document.getElementById('propertyTypeFilter').value;
             const zipcodeFilter = document.getElementById('zipcodeFilter').value;
             const priceMin = parseInt(document.getElementById('priceMin').value) || 0;
             const priceMaxValue = document.getElementById('priceMax').value;
@@ -1688,6 +1707,11 @@
 
                 // Area filter (city or county)
                 if (areaFilter && prop.city !== areaFilter && prop.county !== areaFilter) {
+                    return false;
+                }
+
+                // Property type filter
+                if (propertyTypeFilter && prop.property_type !== propertyTypeFilter) {
                     return false;
                 }
 
@@ -1919,6 +1943,7 @@
 
         // Event listeners
         document.getElementById('areaFilter').addEventListener('change', filterProperties);
+        document.getElementById('propertyTypeFilter').addEventListener('change', filterProperties);
         document.getElementById('zipcodeFilter').addEventListener('change', filterProperties);
         document.getElementById('sortBy').addEventListener('change', () => {
             sortProperties();
