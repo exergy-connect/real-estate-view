@@ -524,6 +524,13 @@
             </div>
 
             <div class="filter-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="includeOlderProperties" style="width: auto; margin: 0; cursor: pointer;">
+                    <span>Include older properties</span>
+                </label>
+            </div>
+
+            <div class="filter-group">
                 <label for="zipcodeFilter">Zipcode</label>
                 <select id="zipcodeFilter">
                     <option value="">All Zipcodes</option>
@@ -637,6 +644,7 @@
             'upcoming_area': true,
             'flood_risk': true
         };
+        let mostRecentExtractionDate = null; // Most recent extracted_at date (YYYY-MM-DD)
 
         // Load data
         async function loadData() {
@@ -670,6 +678,7 @@
                 const maintenance = prop.maintenance?.[0] || {};
                 const pricing = prop.pricing?.[0] || {};
                 const geolocation = prop.geolocation?.[0] || {};
+                const metadata = prop.metadata?.[0] || {};
                     
                     return {
                         mls_number: prop.mls_number,
@@ -696,9 +705,20 @@
                         latitude: geolocation?.latitude ?? location.latitude ?? null,
                         longitude: geolocation?.longitude ?? location.longitude ?? null,
                         nearest_fault_meters: geolocation?.nearest_fault_meters ?? null,
-                        nearest_fault_id: geolocation?.nearest_fault_id ?? null
+                        nearest_fault_id: geolocation?.nearest_fault_id ?? null,
+                        extracted_at: metadata.extracted_at || null,
+                        extracted_at_date: metadata.extracted_at ? metadata.extracted_at.split('T')[0] : null
                     };
                 });
+                
+                // Find the most recent extraction date (day only)
+                const extractionDates = allProperties
+                    .map(p => p.extracted_at_date)
+                    .filter(d => d !== null && d !== undefined);
+                if (extractionDates.length > 0) {
+                    mostRecentExtractionDate = extractionDates.sort().reverse()[0];
+                    console.log('Most recent extraction date:', mostRecentExtractionDate);
+                }
 
                 // Calculate maximum fault distance
                 const faultDistances = allProperties
@@ -1675,8 +1695,17 @@
 
             // Get fault distance filter
             const faultDistanceMin = parseInt(document.getElementById('faultDistanceMin').value) || 0;
+            
+            // Get include older properties checkbox
+            const includeOlderProperties = document.getElementById('includeOlderProperties').checked;
 
             filteredProperties = allProperties.filter(prop => {
+                // Extraction date filter (default: only show most recent extraction day)
+                if (!includeOlderProperties && mostRecentExtractionDate) {
+                    if (prop.extracted_at_date !== mostRecentExtractionDate) {
+                        return false;
+                    }
+                }
                 // Geographic area filter (if an area is selected)
                 if (selectedGeographicArea) {
                     // Flood risk areas act as exclusion filters - exclude ALL flood risk areas
@@ -1944,6 +1973,7 @@
         // Event listeners
         document.getElementById('areaFilter').addEventListener('change', filterProperties);
         document.getElementById('propertyTypeFilter').addEventListener('change', filterProperties);
+        document.getElementById('includeOlderProperties').addEventListener('change', filterProperties);
         document.getElementById('zipcodeFilter').addEventListener('change', filterProperties);
         document.getElementById('sortBy').addEventListener('change', () => {
             sortProperties();
