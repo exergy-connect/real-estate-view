@@ -1058,7 +1058,8 @@
             'upcoming_area': { fill: '#f39c12', stroke: '#e67e22', opacity: 0.4 },
             'flood_risk': { fill: '#e67e22', stroke: '#d35400', opacity: 0.6 },
             'school_zone': { fill: '#16a085', stroke: '#138d75', opacity: 0.4 },
-            'school_zone_sub_division': { fill: '#f1c40f', stroke: '#f39c12', opacity: 0.5 }
+            'school_zone_sub_division': { fill: '#f1c40f', stroke: '#f39c12', opacity: 0.5 },
+            'investment_zone': { fill: '#9b59b6', stroke: '#8e44ad', opacity: 0.5 }
         };
 
         // Create rectangle from bounds
@@ -1398,6 +1399,12 @@
                      title="Click to show/hide Premium School Zone Subdivisions">
                     <div class="map-legend-color" style="background: #f1c40f; border: 2px solid #f39c12;"></div>
                     <span>Premium School Zone</span>
+                </div>
+                <div class="map-legend-item ${!visibleAreaTypes.investment_zone ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('investment_zone')" 
+                     title="Click to show/hide Investment Zones">
+                    <div class="map-legend-color" style="background: #9b59b6; border: 2px solid #8e44ad;"></div>
+                    <span>Investment Zone</span>
                 </div>
                 ` : ''}
                 ${propertyLegend}
@@ -1812,13 +1819,15 @@
                     const aSize = getAreaSize(a);
                     const bSize = getAreaSize(b);
                     
-                    // Premium subdivisions always render last (on top)
-                    if (a.area_type === 'school_zone_sub_division' && b.area_type !== 'school_zone_sub_division') return 1;
-                    if (b.area_type === 'school_zone_sub_division' && a.area_type !== 'school_zone_sub_division') return -1;
+                    // Investment zones and premium subdivisions always render last (on top)
+                    if (a.area_type === 'investment_zone' && b.area_type !== 'investment_zone') return 1;
+                    if (b.area_type === 'investment_zone' && a.area_type !== 'investment_zone') return -1;
+                    if (a.area_type === 'school_zone_sub_division' && b.area_type !== 'school_zone_sub_division' && b.area_type !== 'investment_zone') return 1;
+                    if (b.area_type === 'school_zone_sub_division' && a.area_type !== 'school_zone_sub_division' && a.area_type !== 'investment_zone') return -1;
                     
-                    // Regular school zones render after subdivisions but before others
-                    if (a.area_type === 'school_zone' && b.area_type !== 'school_zone' && b.area_type !== 'school_zone_sub_division') return 1;
-                    if (b.area_type === 'school_zone' && a.area_type !== 'school_zone' && a.area_type !== 'school_zone_sub_division') return -1;
+                    // Regular school zones render after subdivisions/investment zones but before others
+                    if (a.area_type === 'school_zone' && b.area_type !== 'school_zone' && b.area_type !== 'school_zone_sub_division' && b.area_type !== 'investment_zone') return 1;
+                    if (b.area_type === 'school_zone' && a.area_type !== 'school_zone' && a.area_type !== 'school_zone_sub_division' && a.area_type !== 'investment_zone') return -1;
                     
                     // Within same type, smaller areas render last (on top) - larger areas first
                     return bSize - aSize;
@@ -2672,6 +2681,16 @@
 
                 const isSelected = selectedProperties.has(prop.mls_number);
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
+                
+                // Calculate days on market
+                let daysOnMarket = null;
+                if (prop.extracted_at_date) {
+                    const extractedDate = new Date(prop.extracted_at_date);
+                    const today = new Date();
+                    const diffTime = today - extractedDate;
+                    daysOnMarket = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    if (daysOnMarket < 0) daysOnMarket = null;
+                }
 
                 return `
                     <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
@@ -2691,6 +2710,7 @@
                                 ${prop.sqft ? `<div class="property-detail-item"><strong>Sqft:</strong> ${prop.sqft.toLocaleString()}</div>` : ''}
                                 ${prop.lot_size_sqft ? `<div class="property-detail-item"><strong>Lot:</strong> ${prop.lot_size_sqft.toLocaleString()} sqft</div>` : ''}
                                 ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
+                                ${daysOnMarket !== null ? `<div class="property-detail-item"><strong>Days on Market:</strong> ${daysOnMarket}</div>` : ''}
                             </div>
                             ${prop.property_type ? `<span class="property-type">${prop.property_type}</span>` : ''}
                             ${prop.monthly_maintenance_fee ? `
