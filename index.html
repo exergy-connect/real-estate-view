@@ -749,8 +749,11 @@
             'upcoming_area': true,
             'flood_risk': true,
             'school_zone': true,
-            'school_zone_sub_division': true
+            'school_zone_sub_division': true,
+            'investment_zone': true
         };
+        let lastToggledAreaType = null; // Track which area type was last toggled
+        let toggleState = 0; // 0 = normal, 1 = only this type visible, 2 = all visible
         let mostRecentExtractionDate = null; // Most recent extracted_at date (YYYY-MM-DD)
 
         // Load data
@@ -1186,7 +1189,31 @@
 
         // Toggle visibility of a specific area type
         window.toggleAreaTypeVisibility = function(areaType) {
-            visibleAreaTypes[areaType] = !visibleAreaTypes[areaType];
+            // If this is the same area type as last time, cycle through states
+            if (lastToggledAreaType === areaType) {
+                toggleState = (toggleState + 1) % 3;
+            } else {
+                // Different area type - reset to normal toggle
+                toggleState = 0;
+            }
+            
+            lastToggledAreaType = areaType;
+            
+            if (toggleState === 0) {
+                // Normal toggle: just toggle this area type
+                visibleAreaTypes[areaType] = !visibleAreaTypes[areaType];
+            } else if (toggleState === 1) {
+                // Second click: disable all others, enable this one
+                Object.keys(visibleAreaTypes).forEach(key => {
+                    visibleAreaTypes[key] = (key === areaType);
+                });
+            } else {
+                // Third click: restore all (enable everything)
+                Object.keys(visibleAreaTypes).forEach(key => {
+                    visibleAreaTypes[key] = true;
+                });
+            }
+            
             updateLegend();
             updateMap(false);
         };
