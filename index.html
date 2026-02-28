@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HAR Foreclosure Properties - Property Viewer</title>
+    <title>HAR Advanced Property Navigator</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Leaflet JS -->
@@ -539,8 +539,9 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏘️ HAR Foreclosure Properties</h1>
-            <p>Browse and filter foreclosure properties by area, zipcode, and price</p>
+            <h1>HAR Advanced Property Navigator</h1>
+            <p>Hyper-local search powered by coordinate-mapped boundaries and 2026 school performance data.</p>
+            <p>Browse and filter properties by area, zipcode, and price</p>
             <div class="last-refreshed" id="lastRefreshed"></div>
         </div>
 
@@ -747,7 +748,8 @@
             'neighborhood_polygon': true,
             'upcoming_area': true,
             'flood_risk': true,
-            'school_zone': true
+            'school_zone': true,
+            'school_zone_sub_division': true
         };
         let mostRecentExtractionDate = null; // Most recent extracted_at date (YYYY-MM-DD)
 
@@ -1055,7 +1057,8 @@
             'neighborhood_polygon': { fill: '#2ecc71', stroke: '#27ae60', opacity: 0.4 },
             'upcoming_area': { fill: '#f39c12', stroke: '#e67e22', opacity: 0.4 },
             'flood_risk': { fill: '#e67e22', stroke: '#d35400', opacity: 0.6 },
-            'school_zone': { fill: '#16a085', stroke: '#138d75', opacity: 0.4 }
+            'school_zone': { fill: '#16a085', stroke: '#138d75', opacity: 0.4 },
+            'school_zone_sub_division': { fill: '#f1c40f', stroke: '#f39c12', opacity: 0.5 }
         };
 
         // Create rectangle from bounds
@@ -1343,6 +1346,12 @@
                      title="Click to show/hide School Zones">
                     <div class="map-legend-color" style="background: #16a085; border: 2px solid #138d75;"></div>
                     <span>School Zone</span>
+                </div>
+                <div class="map-legend-item ${!visibleAreaTypes.school_zone_sub_division ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('school_zone_sub_division')" 
+                     title="Click to show/hide Premium School Zone Subdivisions">
+                    <div class="map-legend-color" style="background: #f1c40f; border: 2px solid #f39c12;"></div>
+                    <span>Premium School Zone</span>
                 </div>
                 ` : ''}
                 ${propertyLegend}
