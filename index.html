@@ -472,7 +472,9 @@
             pointer-events: none; /* Allow clicks to pass through to underlying marker */
         }
 
-        .area-tooltip {
+        .area-tooltip,
+        .property-tooltip,
+        .school-tooltip {
             background: rgba(255, 255, 255, 0.95);
             border: 1px solid #ccc;
             border-radius: 4px;
@@ -487,7 +489,9 @@
             white-space: normal;
         }
 
-        .area-tooltip::before {
+        .area-tooltip::before,
+        .property-tooltip::before,
+        .school-tooltip::before {
             border-top-color: #ccc;
         }
 
@@ -503,6 +507,31 @@
 
             .header h1 {
                 font-size: 1.8em;
+            }
+
+            .map-toggle {
+                flex-direction: column;
+                align-items: stretch;
+                margin: 20px 15px 0;
+            }
+
+            .map-toggle > div {
+                flex-direction: column;
+                align-items: stretch;
+                width: 100%;
+            }
+
+            .map-toggle button {
+                font-size: 0.9em;
+                padding: 10px 15px;
+                white-space: nowrap;
+                width: 100%;
+                margin-bottom: 8px;
+                box-sizing: border-box;
+            }
+
+            .map-toggle button:last-child {
+                margin-bottom: 0;
             }
         }
     </style>
@@ -592,6 +621,8 @@
                 <select id="sortBy">
                     <option value="price-asc">Price: Low to High</option>
                     <option value="price-desc">Price: High to Low</option>
+                    <option value="price-per-sqft-asc">Price per Sqft: Low to High</option>
+                    <option value="price-per-sqft-desc">Price per Sqft: High to Low</option>
                     <option value="zipcode-asc">Zipcode: Low to High</option>
                     <option value="zipcode-desc">Zipcode: High to Low</option>
                     <option value="maintenance-asc">Maintenance Fee: Low to High</option>
@@ -599,6 +630,47 @@
                     <option value="date-asc">Listing Date: Oldest First</option>
                     <option value="date-desc">Listing Date: Newest First</option>
                 </select>
+            </div>
+        </div>
+
+        <div id="schoolFilterSection" style="display: none; background: #f8f9fa; padding: 20px 30px; border-bottom: 1px solid #dee2e6;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #495057; font-size: 1.1em;">School Grade Filters</h3>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div class="filter-group">
+                    <label for="elementaryMinGrade">Minimum Elementary School Grade</label>
+                    <select id="elementaryMinGrade" disabled>
+                        <option value="">Any Grade</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                        <option value="F">F</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="middleMinGrade">Minimum Middle School Grade</label>
+                    <select id="middleMinGrade" disabled>
+                        <option value="">Any Grade</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                        <option value="F">F</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="highMinGrade">Minimum High School Grade</label>
+                    <select id="highMinGrade" disabled>
+                        <option value="">Any Grade</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                        <option value="F">F</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -619,7 +691,9 @@
                 <button id="toggleMapBtn" onclick="toggleMap()">🗺️ Show Map</button>
                 <button id="toggleFaultsBtn" onclick="toggleFaultPoints()" style="display: none;">🔴 Show Fault Points</button>
                 <button id="toggleAreasBtn" onclick="toggleGeographicAreas()" style="display: none;">📍 Show Geographic Areas</button>
+                <button id="toggleSchoolsBtn" onclick="toggleSchools()" style="display: none;">🏫 Show Schools</button>
                 <button id="clearAreaFilterBtn" onclick="clearGeographicAreaFilter()" style="display: none; background: #dc3545;">✕ Clear Area Filter</button>
+                <button id="toggleSchoolFilterBtn" onclick="toggleSchoolFilter()" style="background: #17a2b8;">🎓 Filter by School Grades</button>
             </div>
             <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <div id="faultDistanceSliderContainer" style="display: none; min-width: 200px; max-width: 400px;">
@@ -651,14 +725,20 @@
         let map = null;
         let faultMarkers = [];
         let propertyMarkers = [];
+        let schoolMarkers = [];
+        let schoolLines = [];
         let faultData = [];
         let showFaultPoints = false; // Default: hidden
         let geographicAreas = [];
         let geographicAreaLayers = [];
         let showGeographicAreas = false; // Default: hidden
+        let showSchools = false; // Default: hidden
         let selectedGeographicArea = null; // Currently selected area for filtering (inclusion or exclusion)
         let visualizationMode = 'property_type'; // Default visualization mode
         let propertyValueRanges = { price: null, sqft: null, days_on_market: null }; // Cache for min/max values
+        let schoolsData = {}; // Map of school_id to school data
+        let propertySchoolsData = {}; // Map of mls_number to property_schools data
+        let schoolFilterEnabled = false; // Whether school filtering is enabled
         // Track visibility of each area type
         let visibleAreaTypes = {
             'market_sector': true,
@@ -692,6 +772,9 @@
                 
                 // Load geographic area data
                 loadGeographicAreaData(data);
+                
+                // Load school data
+                loadSchoolData(data);
                 
                 // Extract properties from the nested structure
                 const properties = Object.values(data.data.property || {});
@@ -732,7 +815,8 @@
                         nearest_fault_meters: geolocation?.nearest_fault_meters ?? null,
                         nearest_fault_id: geolocation?.nearest_fault_id ?? null,
                         extracted_at: metadata.extracted_at || null,
-                        extracted_at_date: metadata.extracted_at ? metadata.extracted_at.split('T')[0] : null
+                        extracted_at_date: metadata.extracted_at ? metadata.extracted_at.split('T')[0] : null,
+                        property_schools: prop.property_schools?.[0] || null
                     };
                 });
                 
@@ -768,10 +852,15 @@
                 // Calculate value ranges for gradient visualizations
                 calculateValueRanges();
                 
-                populateFilters();
-                filterProperties();
-                initMap();
-                updateSelection(); // Initialize selection count display
+            populateFilters();
+            filterProperties();
+            initMap();
+            updateSelection(); // Initialize selection count display
+            
+            // Add event listeners for school grade filters
+            document.getElementById('elementaryMinGrade').addEventListener('change', filterProperties);
+            document.getElementById('middleMinGrade').addEventListener('change', filterProperties);
+            document.getElementById('highMinGrade').addEventListener('change', filterProperties);
             } catch (error) {
                 console.error('Error loading data:', error);
                 document.getElementById('propertiesContainer').innerHTML = 
@@ -827,6 +916,135 @@
             
             console.log('Total geographic areas loaded:', geographicAreas.length);
             console.log('Flood risk areas:', geographicAreas.filter(a => a.area_type === 'flood_risk').length);
+        }
+
+        function loadSchoolData(data) {
+            schoolsData = {};
+            propertySchoolsData = {};
+            
+            // Load schools from geographic_area entities (schools are nested under geographic_area)
+            const areas = data.data?.geographic_area || {};
+            for (const [areaId, areaData] of Object.entries(areas)) {
+                if (areaData.schools && Array.isArray(areaData.schools)) {
+                    for (const school of areaData.schools) {
+                        if (school.school_id) {
+                            schoolsData[school.school_id] = school;
+                        }
+                    }
+                }
+            }
+            
+            // Also check if schools are at top level (for backward compatibility)
+            const topLevelSchools = data.data?.school || {};
+            for (const [schoolId, schoolData] of Object.entries(topLevelSchools)) {
+                if (schoolData.school_id) {
+                    schoolsData[schoolData.school_id] = schoolData;
+                }
+            }
+            
+            // Load property_schools associations
+            const propertySchools = data.data?.property_schools || {};
+            for (const [mlsNumber, psData] of Object.entries(propertySchools)) {
+                // Convert key to integer since mls_number is always an integer
+                const mlsNum = parseInt(mlsNumber);
+                propertySchoolsData[mlsNum] = psData;
+            }
+            
+            console.log('Loaded schools:', Object.keys(schoolsData).length);
+            console.log('Loaded property-school associations:', Object.keys(propertySchoolsData).length);
+        }
+
+        // Toggle school filter section
+        function toggleSchoolFilter() {
+            schoolFilterEnabled = !schoolFilterEnabled;
+            const section = document.getElementById('schoolFilterSection');
+            const btn = document.getElementById('toggleSchoolFilterBtn');
+            const elementarySelect = document.getElementById('elementaryMinGrade');
+            const middleSelect = document.getElementById('middleMinGrade');
+            const highSelect = document.getElementById('highMinGrade');
+            
+            if (schoolFilterEnabled) {
+                section.style.display = 'block';
+                btn.textContent = '🎓 Hide School Filters';
+                btn.style.background = '#28a745';
+                elementarySelect.disabled = false;
+                middleSelect.disabled = false;
+                highSelect.disabled = false;
+            } else {
+                section.style.display = 'none';
+                btn.textContent = '🎓 Filter by School Grades';
+                btn.style.background = '#17a2b8';
+                elementarySelect.disabled = true;
+                middleSelect.disabled = true;
+                highSelect.disabled = true;
+                // Clear filter values
+                elementarySelect.value = '';
+                middleSelect.value = '';
+                highSelect.value = '';
+            }
+            
+            filterProperties();
+        }
+
+        // Get grade value for comparison (A=5, B=4, C=3, D=2, F=1)
+        function getGradeValue(grade) {
+            if (!grade) return 0;
+            const gradeMap = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'F': 1 };
+            return gradeMap[grade.toUpperCase()] || 0;
+        }
+
+        // Check if property meets school grade requirements
+        function meetsSchoolGradeRequirements(prop) {
+            if (!schoolFilterEnabled) return true;
+            
+            const elementaryMin = document.getElementById('elementaryMinGrade').value;
+            const middleMin = document.getElementById('middleMinGrade').value;
+            const highMin = document.getElementById('highMinGrade').value;
+            
+            // If no filters are set, allow all properties
+            if (!elementaryMin && !middleMin && !highMin) return true;
+            
+            // Get property's school associations
+            const propSchools = prop.property_schools || propertySchoolsData[prop.mls_number];
+            if (!propSchools) {
+                // If property has no school data and filters are set, exclude it
+                return false;
+            }
+            
+            // Check elementary school grade
+            if (elementaryMin) {
+                const elementarySchoolId = propSchools.elementary_school_id;
+                if (!elementarySchoolId) return false;
+                const school = schoolsData[elementarySchoolId];
+                if (!school || !school.grade) return false;
+                const schoolGradeValue = getGradeValue(school.grade);
+                const minGradeValue = getGradeValue(elementaryMin);
+                if (schoolGradeValue < minGradeValue) return false;
+            }
+            
+            // Check middle school grade
+            if (middleMin) {
+                const middleSchoolId = propSchools.middle_school_id;
+                if (!middleSchoolId) return false;
+                const school = schoolsData[middleSchoolId];
+                if (!school || !school.grade) return false;
+                const schoolGradeValue = getGradeValue(school.grade);
+                const minGradeValue = getGradeValue(middleMin);
+                if (schoolGradeValue < minGradeValue) return false;
+            }
+            
+            // Check high school grade
+            if (highMin) {
+                const highSchoolId = propSchools.high_school_id;
+                if (!highSchoolId) return false;
+                const school = schoolsData[highSchoolId];
+                if (!school || !school.grade) return false;
+                const schoolGradeValue = getGradeValue(school.grade);
+                const minGradeValue = getGradeValue(highMin);
+                if (schoolGradeValue < minGradeValue) return false;
+            }
+            
+            return true;
         }
 
         // Color mapping for area types
@@ -956,6 +1174,7 @@
             const faultBtn = document.getElementById('toggleFaultsBtn');
             
             const areasBtn = document.getElementById('toggleAreasBtn');
+            const schoolsBtn = document.getElementById('toggleSchoolsBtn');
             const clearAreaBtn = document.getElementById('clearAreaFilterBtn');
             
             const faultDistanceContainer = document.getElementById('faultDistanceSliderContainer');
@@ -965,13 +1184,18 @@
                 btn.textContent = '🗺️ Show Map';
                 faultBtn.style.display = 'none';
                 areasBtn.style.display = 'none';
+                if (schoolsBtn) schoolsBtn.style.display = 'none';
                 if (clearAreaBtn) clearAreaBtn.style.display = 'none';
                 if (faultDistanceContainer) faultDistanceContainer.style.display = 'none';
             } else {
                 container.classList.add('active');
                 btn.textContent = '🗺️ Hide Map';
-                faultBtn.style.display = 'inline-block';
-                areasBtn.style.display = 'inline-block';
+                // Use block on mobile for better visibility, inline-block on desktop
+                const isMobile = window.innerWidth <= 768;
+                const displayStyle = isMobile ? 'block' : 'inline-block';
+                faultBtn.style.display = displayStyle;
+                areasBtn.style.display = displayStyle;
+                if (schoolsBtn) schoolsBtn.style.display = displayStyle;
                 if (faultDistanceContainer && actualMaxFaultDistance > 0) {
                     faultDistanceContainer.style.display = 'block';
                 }
@@ -1130,6 +1354,31 @@
                     <div class="map-legend-color" style="background: #ffc107; border-color: #333;"></div>
                     <span>Selected Property</span>
                 </div>
+                ${showSchools ? `
+                <div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px;">
+                    <div style="margin-bottom: 6px; font-weight: bold; font-size: 0.9em;">School Grades</div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #2ecc71; border: 2px solid #27ae60;"></div>
+                        <span>Grade A</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
+                        <span>Grade B</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #f39c12; border: 2px solid #e67e22;"></div>
+                        <span>Grade C</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #e67e22; border: 2px solid #d35400;"></div>
+                        <span>Grade D</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #e74c3c; border: 2px solid #c0392b;"></div>
+                        <span>Grade F</span>
+                    </div>
+                </div>
+                ` : ''}
             `;
         }
 
@@ -1170,6 +1419,171 @@
             const btn = document.getElementById('toggleAreasBtn');
             btn.textContent = showGeographicAreas ? '📍 Hide Geographic Areas' : '📍 Show Geographic Areas';
             btn.classList.toggle('active', showGeographicAreas);
+            updateLegend();
+            updateMap(false); // Pass false to skip fitBounds
+            
+            // Restore previous view after updating markers
+            if (map && currentCenter && currentZoom !== null) {
+                map.setView(currentCenter, currentZoom);
+            }
+        };
+
+        // Get school color by grade
+        function getSchoolColorByGrade(grade) {
+            if (!grade) return { fill: '#95a5a6', stroke: '#7f8c8d' }; // Gray for no grade
+            const gradeColors = {
+                'A': { fill: '#2ecc71', stroke: '#27ae60' }, // Green
+                'B': { fill: '#3498db', stroke: '#2980b9' }, // Blue
+                'C': { fill: '#f39c12', stroke: '#e67e22' }, // Orange/Yellow
+                'D': { fill: '#e67e22', stroke: '#d35400' }, // Dark Orange
+                'F': { fill: '#e74c3c', stroke: '#c0392b' }  // Red
+            };
+            return gradeColors[grade.toUpperCase()] || { fill: '#95a5a6', stroke: '#7f8c8d' };
+        }
+
+        // Add school markers to map
+        function addSchoolMarkers(propertiesToShow) {
+            const propertyCount = propertiesToShow.size;
+            const shouldDrawLines = propertyCount < 100;
+            const shouldShowTooltips = propertyCount < 100;
+            
+            // Collect unique schools from visible properties
+            const visibleSchoolIds = new Set();
+            const propertySchoolConnections = [];
+            
+            propertiesToShow.forEach(({ prop }, mlsNum) => {
+                // Get property_schools data (mls_number is always an integer)
+                const propSchools = prop.property_schools || propertySchoolsData[prop.mls_number];
+                if (!propSchools) return;
+                
+                const connections = {
+                    property: prop,
+                    mlsNumber: mlsNum,
+                    schools: []
+                };
+                
+                // Get elementary school
+                if (propSchools.elementary_school_id) {
+                    const schoolId = typeof propSchools.elementary_school_id === 'string' ? parseInt(propSchools.elementary_school_id) : propSchools.elementary_school_id;
+                    visibleSchoolIds.add(schoolId);
+                    connections.schools.push({ id: schoolId, level: 'Elementary' });
+                }
+                
+                // Get middle school
+                if (propSchools.middle_school_id) {
+                    const schoolId = typeof propSchools.middle_school_id === 'string' ? parseInt(propSchools.middle_school_id) : propSchools.middle_school_id;
+                    visibleSchoolIds.add(schoolId);
+                    connections.schools.push({ id: schoolId, level: 'Middle' });
+                }
+                
+                // Get high school
+                if (propSchools.high_school_id) {
+                    const schoolId = typeof propSchools.high_school_id === 'string' ? parseInt(propSchools.high_school_id) : propSchools.high_school_id;
+                    visibleSchoolIds.add(schoolId);
+                    connections.schools.push({ id: schoolId, level: 'High' });
+                }
+                
+                if (connections.schools.length > 0) {
+                    propertySchoolConnections.push(connections);
+                }
+            });
+            
+            // Create markers for visible schools
+            visibleSchoolIds.forEach(schoolId => {
+                // Try both number and string keys
+                const school = schoolsData[schoolId] || schoolsData[String(schoolId)] || schoolsData[parseInt(schoolId)];
+                if (!school || !school.latitude || !school.longitude) return;
+                
+                const grade = school.grade || '';
+                const colors = getSchoolColorByGrade(grade);
+                
+                // Create school marker (slightly larger than property markers)
+                const marker = L.circleMarker([school.latitude, school.longitude], {
+                    radius: 8,
+                    fillColor: colors.fill,
+                    color: colors.stroke,
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                });
+                
+                const popup = L.popup().setContent(`
+                    <strong>${school.name || 'Unknown School'}</strong><br>
+                    Level: ${school.level || 'N/A'}<br>
+                    Grade: ${grade || 'N/A'}<br>
+                    ${school.rating_stars ? `Rating: ${school.rating_stars} stars<br>` : ''}
+                    ${school.street ? `${school.street}, ` : ''}${school.city || ''}, ${school.state || ''} ${school.zipcode || ''}
+                `);
+                
+                marker.bindPopup(popup);
+                
+                // Add tooltip if there are fewer than 100 properties
+                if (shouldShowTooltips) {
+                    const tooltipContent = `
+                        <div style="font-size: 12px; min-width: 150px; max-width: 250px;">
+                            <strong style="display: block; margin-bottom: 4px; color: ${colors.stroke};">${school.name || 'Unknown School'}</strong>
+                            <span style="color: #666; display: block; margin-bottom: 2px; font-size: 11px;">${school.level || 'N/A'} School</span>
+                            ${grade ? `<span style="color: #666; font-size: 11px; display: block;">Grade: ${grade}</span>` : ''}
+                            ${school.rating_stars ? `<span style="color: #666; font-size: 11px; display: block;">${school.rating_stars} stars</span>` : ''}
+                        </div>
+                    `;
+                    marker.bindTooltip(tooltipContent, {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'school-tooltip',
+                        offset: [0, -10]
+                    });
+                }
+                
+                marker.addTo(map);
+                schoolMarkers.push(marker);
+            });
+            
+            // Draw dotted lines from properties to schools if property count < 100
+            if (shouldDrawLines) {
+                propertySchoolConnections.forEach(connection => {
+                    const prop = connection.property;
+                    if (!prop.latitude || !prop.longitude) return;
+                    
+                    connection.schools.forEach(schoolInfo => {
+                        // Try both number and string keys
+                        const school = schoolsData[schoolInfo.id] || schoolsData[String(schoolInfo.id)] || schoolsData[parseInt(schoolInfo.id)];
+                        if (!school || !school.latitude || !school.longitude) return;
+                        
+                        const colors = getSchoolColorByGrade(school.grade);
+                        
+                        // Create dotted line from property to school
+                        const line = L.polyline(
+                            [[prop.latitude, prop.longitude], [school.latitude, school.longitude]],
+                            {
+                                color: colors.stroke,
+                                weight: 2,
+                                opacity: 0.6,
+                                dashArray: '5, 10' // Dotted line pattern
+                            }
+                        );
+                        
+                        line.addTo(map);
+                        schoolLines.push(line);
+                    });
+                });
+            }
+        }
+
+        // Toggle schools visibility
+        window.toggleSchools = function() {
+            // Save current map view to preserve zoom and center
+            let currentCenter = null;
+            let currentZoom = null;
+            if (map) {
+                currentCenter = map.getCenter();
+                currentZoom = map.getZoom();
+            }
+            
+            showSchools = !showSchools;
+            const btn = document.getElementById('toggleSchoolsBtn');
+            btn.textContent = showSchools ? '🏫 Hide Schools' : '🏫 Show Schools';
+            btn.classList.toggle('active', showSchools);
             updateLegend();
             updateMap(false); // Pass false to skip fitBounds
             
@@ -1292,9 +1706,13 @@
             // Clear existing markers and layers
             faultMarkers.forEach(marker => map.removeLayer(marker));
             propertyMarkers.forEach(marker => map.removeLayer(marker));
+            schoolMarkers.forEach(marker => map.removeLayer(marker));
+            schoolLines.forEach(line => map.removeLayer(line));
             geographicAreaLayers.forEach(layer => map.removeLayer(layer));
             faultMarkers = [];
             propertyMarkers = [];
+            schoolMarkers = [];
+            schoolLines = [];
             geographicAreaLayers = [];
             
             // Add fault markers (only if enabled)
@@ -1434,21 +1852,17 @@
             }
             
             // Create a set of filtered property MLS numbers for quick lookup
-            const filteredMlsNumbers = new Set(filteredProperties.map(p => {
-                const mlsNum = typeof p.mls_number === 'string' ? parseInt(p.mls_number) : p.mls_number;
-                return mlsNum;
-            }));
+            const filteredMlsNumbers = new Set(filteredProperties.map(p => p.mls_number));
             
             // Add property markers - show all filtered properties, plus any selected properties that might be filtered out
             const propertiesToShow = new Map(); // Use Map to store both mlsNum and prop data
             
             // Add all filtered properties
             filteredProperties.forEach(prop => {
-                const mlsNum = typeof prop.mls_number === 'string' ? parseInt(prop.mls_number) : prop.mls_number;
                 if (prop.latitude && prop.longitude) {
-                    propertiesToShow.set(mlsNum, { prop, isFiltered: true });
+                    propertiesToShow.set(prop.mls_number, { prop, isFiltered: true });
                 } else {
-                    console.log('Filtered property missing coordinates:', mlsNum, 'lat:', prop.latitude, 'lng:', prop.longitude);
+                    console.log('Filtered property missing coordinates:', prop.mls_number, 'lat:', prop.latitude, 'lng:', prop.longitude);
                 }
             });
             
@@ -1456,10 +1870,7 @@
             selectedProperties.forEach(mlsNum => {
                 if (!propertiesToShow.has(mlsNum)) {
                     // Find the property in allProperties
-                    const prop = allProperties.find(p => {
-                        const pMlsNum = typeof p.mls_number === 'string' ? parseInt(p.mls_number) : p.mls_number;
-                        return pMlsNum === mlsNum;
-                    });
+                    const prop = allProperties.find(p => p.mls_number === mlsNum);
                     if (prop) {
                         console.log('Found selected property:', mlsNum, 'lat:', prop.latitude, 'lng:', prop.longitude);
                         if (prop.latitude && prop.longitude) {
@@ -1474,7 +1885,9 @@
             });
             
             // Create markers for all properties to show
-            console.log('Properties to show on map:', propertiesToShow.size);
+            const propertyCount = propertiesToShow.size;
+            const shouldShowTooltips = propertyCount < 100;
+            console.log('Properties to show on map:', propertyCount, 'Show tooltips:', shouldShowTooltips);
             propertiesToShow.forEach(({ prop, isFiltered: isFilteredProp }, mlsNum) => {
                 if (!prop) {
                     console.log('Skipping - no prop data for:', mlsNum);
@@ -1561,6 +1974,25 @@
                 `);
                 
                 marker.bindPopup(popup);
+                
+                // Add tooltip if there are fewer than 100 properties
+                if (shouldShowTooltips) {
+                    const pricePerSqft = (prop.price && prop.sqft && prop.sqft > 0) ? ` <span style="font-size: 0.7em; color: #666;">($${Math.round(prop.price / prop.sqft).toLocaleString()}/sqft)</span>` : '';
+                    const tooltipContent = `
+                        <div style="font-size: 12px; min-width: 150px; max-width: 250px;">
+                            <strong style="display: block; margin-bottom: 4px;">$${prop.price ? prop.price.toLocaleString() : 'N/A'}${pricePerSqft}</strong>
+                            <span style="color: #666; display: block; margin-bottom: 2px; font-size: 11px;">${address}</span>
+                            ${prop.beds || prop.sqft ? `<span style="color: #666; font-size: 11px; display: block;">${prop.beds ? `${prop.beds} bed` : ''}${prop.beds && prop.sqft ? ', ' : ''}${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}</span>` : ''}
+                        </div>
+                    `;
+                    marker.bindTooltip(tooltipContent, {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'property-tooltip',
+                        offset: [0, -10]
+                    });
+                }
+                
                 marker.on('click', () => {
                     window.togglePropertySelection(mlsNum);
                 });
@@ -1574,9 +2006,14 @@
             
             console.log('Total markers created:', propertyMarkers.length, 'Selected properties:', selectedProperties.size);
             
+            // Add school markers and lines (only if enabled)
+            if (showSchools) {
+                addSchoolMarkers(propertiesToShow);
+            }
+            
             // Fit map to show all markers if there are any (only if shouldFitBounds is true)
             if (shouldFitBounds) {
-            const allMarkers = [...faultMarkers, ...propertyMarkers];
+            const allMarkers = [...faultMarkers, ...propertyMarkers, ...schoolMarkers];
             if (allMarkers.length > 0) {
                 const group = new L.featureGroup(allMarkers);
                 const bounds = group.getBounds();
@@ -1602,17 +2039,15 @@
 
         // Toggle property selection (global function for onclick handlers)
         window.togglePropertySelection = function(mlsNumber) {
-            // Ensure mlsNumber is a number for consistent comparison
-            const mlsNum = typeof mlsNumber === 'string' ? parseInt(mlsNumber) : mlsNumber;
+            // mlsNumber is always an integer
+            console.log('Toggling selection for property:', mlsNumber, 'Current selected:', Array.from(selectedProperties));
             
-            console.log('Toggling selection for property:', mlsNum, 'Current selected:', Array.from(selectedProperties));
-            
-            if (selectedProperties.has(mlsNum)) {
-                selectedProperties.delete(mlsNum);
-                console.log('Deselected property:', mlsNum);
+            if (selectedProperties.has(mlsNumber)) {
+                selectedProperties.delete(mlsNumber);
+                console.log('Deselected property:', mlsNumber);
             } else {
-                selectedProperties.add(mlsNum);
-                console.log('Selected property:', mlsNum, 'Total selected:', selectedProperties.size);
+                selectedProperties.add(mlsNumber);
+                console.log('Selected property:', mlsNumber, 'Total selected:', selectedProperties.size);
             }
             updateSelection();
         };
@@ -1973,6 +2408,11 @@
                     }
                 }
 
+                // School grade filter
+                if (!meetsSchoolGradeRequirements(prop)) {
+                    return false;
+                }
+
                 return true;
             });
 
@@ -2021,14 +2461,15 @@
         // Sort properties
         function sortProperties() {
             const sortBy = document.getElementById('sortBy').value;
-            const [field, direction] = sortBy.split('-');
+            // Split on last hyphen to handle fields with hyphens like "price-per-sqft"
+            const lastHyphenIndex = sortBy.lastIndexOf('-');
+            const field = sortBy.substring(0, lastHyphenIndex);
+            const direction = sortBy.substring(lastHyphenIndex + 1);
             
             filteredProperties.sort((a, b) => {
                 // First, prioritize selected properties
-                const aMlsNum = typeof a.mls_number === 'string' ? parseInt(a.mls_number) : a.mls_number;
-                const bMlsNum = typeof b.mls_number === 'string' ? parseInt(b.mls_number) : b.mls_number;
-                const aSelected = selectedProperties.has(aMlsNum);
-                const bSelected = selectedProperties.has(bMlsNum);
+                const aSelected = selectedProperties.has(a.mls_number);
+                const bSelected = selectedProperties.has(b.mls_number);
                 
                 // If one is selected and the other isn't, selected comes first
                 if (aSelected && !bSelected) return -1;
@@ -2043,6 +2484,17 @@
                         bValue = b.price || 0;
                         // If both are 0 or null, maintain order
                         if (aValue === 0 && bValue === 0) return 0;
+                        break;
+                    case 'price-per-sqft':
+                        // Calculate price per square foot
+                        const aPricePerSqft = (a.price && a.sqft && a.sqft > 0) ? a.price / a.sqft : null;
+                        const bPricePerSqft = (b.price && b.sqft && b.sqft > 0) ? b.price / b.sqft : null;
+                        // Properties without price or sqft go to end
+                        if (aPricePerSqft === null && bPricePerSqft === null) return 0;
+                        if (aPricePerSqft === null) return 1;
+                        if (bPricePerSqft === null) return -1;
+                        aValue = aPricePerSqft;
+                        bValue = bPricePerSqft;
                         break;
                     case 'zipcode':
                         aValue = a.zipcode || 0;
@@ -2135,19 +2587,18 @@
                     ? `<img src="${mainImage}" alt="Property image" onerror="this.parentElement.innerHTML='<div class=\\'no-image\\'>No Image</div>'">`
                     : '<div class="no-image">No Image</div>';
 
-                const mlsNum = typeof prop.mls_number === 'string' ? parseInt(prop.mls_number) : prop.mls_number;
-                const isSelected = selectedProperties.has(mlsNum);
+                const isSelected = selectedProperties.has(prop.mls_number);
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
 
                 return `
-                    <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${mlsNum}" onclick="window.togglePropertySelection(${mlsNum})">
+                    <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
                         <div class="property-image">
                             ${imageHtml}
                             ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 18px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">🌊</div>' : ''}
                         </div>
                         <div class="property-content">
                             <div class="property-price">
-                                $${prop.price ? prop.price.toLocaleString() : 'N/A'}
+                                $${prop.price ? prop.price.toLocaleString() : 'N/A'}${(prop.price && prop.sqft && prop.sqft > 0) ? ` <span style="font-size: 0.6em; color: #666;">($${Math.round(prop.price / prop.sqft).toLocaleString()}/sqft)</span>` : ''}
                                 ${isInFloodRisk ? ' <span style="color: #e74c3c; font-size: 0.8em; margin-left: 8px;" title="High Flood Risk Area">🌊</span>' : ''}
                             </div>
                             <div class="property-address">${address}</div>
