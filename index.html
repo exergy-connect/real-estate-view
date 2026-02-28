@@ -67,6 +67,17 @@
             font-size: 1.1em;
         }
 
+        .last-refreshed {
+            position: absolute;
+            bottom: 10px;
+            right: 20px;
+            font-size: 0.75em;
+            opacity: 0.6;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
         .filters {
             background: #f8f9fa;
             padding: 20px 30px;
@@ -501,9 +512,20 @@
         <div class="header">
             <h1>🏘️ HAR Foreclosure Properties</h1>
             <p>Browse and filter foreclosure properties by area, zipcode, and price</p>
+            <div class="last-refreshed" id="lastRefreshed"></div>
         </div>
 
         <div class="filters">
+            <div class="filter-group">
+                <label for="visualizationMode">Visualization</label>
+                <select id="visualizationMode">
+                    <option value="property_type">By Property Type</option>
+                    <option value="price">By Price (Gradient)</option>
+                    <option value="sqft">By Square Footage (Gradient)</option>
+                    <option value="days_on_market">By Days on Market (Gradient)</option>
+                </select>
+            </div>
+
             <div class="filter-group">
                 <label for="areaFilter">Area (City/County)</label>
                 <select id="areaFilter">
@@ -635,6 +657,8 @@
         let geographicAreaLayers = [];
         let showGeographicAreas = false; // Default: hidden
         let selectedGeographicArea = null; // Currently selected area for filtering (inclusion or exclusion)
+        let visualizationMode = 'property_type'; // Default visualization mode
+        let propertyValueRanges = { price: null, sqft: null, days_on_market: null }; // Cache for min/max values
         // Track visibility of each area type
         let visibleAreaTypes = {
             'market_sector': true,
@@ -642,7 +666,8 @@
             'market_ring': true,
             'neighborhood_polygon': true,
             'upcoming_area': true,
-            'flood_risk': true
+            'flood_risk': true,
+            'school_zone': true
         };
         let mostRecentExtractionDate = null; // Most recent extracted_at date (YYYY-MM-DD)
 
@@ -740,6 +765,9 @@
                     }
                 }
                 
+                // Calculate value ranges for gradient visualizations
+                calculateValueRanges();
+                
                 populateFilters();
                 filterProperties();
                 initMap();
@@ -808,7 +836,8 @@
             'market_ring': { fill: '#9b59b6', stroke: '#8e44ad', opacity: 0.4 },
             'neighborhood_polygon': { fill: '#2ecc71', stroke: '#27ae60', opacity: 0.4 },
             'upcoming_area': { fill: '#f39c12', stroke: '#e67e22', opacity: 0.4 },
-            'flood_risk': { fill: '#e67e22', stroke: '#d35400', opacity: 0.6 }
+            'flood_risk': { fill: '#e67e22', stroke: '#d35400', opacity: 0.6 },
+            'school_zone': { fill: '#16a085', stroke: '#138d75', opacity: 0.4 }
         };
 
         // Create rectangle from bounds
@@ -970,6 +999,77 @@
                 if (!div) return;
             }
             
+            const mode = visualizationMode || 'property_type';
+            let propertyLegend = '';
+            
+            if (mode === 'property_type') {
+                // Show property types
+                propertyLegend = `
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #28a745;"></div>
+                        <span>Single-Family</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #17a2b8;"></div>
+                        <span>Multi-Family</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #6f42c1;"></div>
+                        <span>Townhouse</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #fd7e14;"></div>
+                        <span>Condo</span>
+                    </div>
+                    <div class="map-legend-item">
+                        <div class="map-legend-color" style="background: #6c757d;"></div>
+                        <span>Land</span>
+                    </div>
+                `;
+            } else if (mode === 'price') {
+                // Show price gradient
+                const minPrice = propertyValueRanges.price ? `$${Math.round(propertyValueRanges.price.min / 1000)}k` : 'Low';
+                const maxPrice = propertyValueRanges.price ? `$${Math.round(propertyValueRanges.price.max / 1000)}k` : 'High';
+                propertyLegend = `
+                    <div style="margin-bottom: 8px; font-weight: bold; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">Price</div>
+                    <div class="map-legend-item" style="flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <div style="width: 100px; height: 20px; background: linear-gradient(to right, rgb(255,0,0), rgb(0,255,0)); border: 1px solid #fff; border-radius: 3px;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; padding: 0 4px;">
+                        <span style="color: #ff6666;">${minPrice}</span>
+                        <span style="color: #66ff66;">${maxPrice}</span>
+                    </div>
+                `;
+            } else if (mode === 'sqft') {
+                // Show square footage gradient
+                const minSqft = propertyValueRanges.sqft ? `${Math.round(propertyValueRanges.sqft.min / 100)}00 sqft` : 'Small';
+                const maxSqft = propertyValueRanges.sqft ? `${Math.round(propertyValueRanges.sqft.max / 100)}00 sqft` : 'Large';
+                propertyLegend = `
+                    <div style="margin-bottom: 8px; font-weight: bold; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">Square Footage</div>
+                    <div class="map-legend-item" style="flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <div style="width: 100px; height: 20px; background: linear-gradient(to right, rgb(255,0,0), rgb(0,255,0)); border: 1px solid #fff; border-radius: 3px;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; padding: 0 4px;">
+                        <span style="color: #ff6666;">${minSqft}</span>
+                        <span style="color: #66ff66;">${maxSqft}</span>
+                    </div>
+                `;
+            } else if (mode === 'days_on_market') {
+                // Show days on market gradient
+                const minDays = propertyValueRanges.days_on_market ? `${propertyValueRanges.days_on_market.min} days` : 'Recent';
+                const maxDays = propertyValueRanges.days_on_market ? `${propertyValueRanges.days_on_market.max} days` : 'Old';
+                propertyLegend = `
+                    <div style="margin-bottom: 8px; font-weight: bold; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">Days on Market</div>
+                    <div class="map-legend-item" style="flex-direction: row; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <div style="width: 100px; height: 20px; background: linear-gradient(to right, rgb(0,255,0), rgb(255,0,0)); border: 1px solid #fff; border-radius: 3px;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; padding: 0 4px;">
+                        <span style="color: #66ff66;">${minDays}</span>
+                        <span style="color: #ff6666;">${maxDays}</span>
+                    </div>
+                `;
+            }
+            
             div.innerHTML = `
                 ${showFaultPoints ? `
                 <div class="map-legend-item">
@@ -1014,11 +1114,14 @@
                     <div class="map-legend-color" style="background: #e67e22; border: 2px solid #d35400;"></div>
                     <span>Flood Risk</span>
                 </div>
-                ` : ''}
-                <div class="map-legend-item">
-                    <div class="map-legend-color" style="background: #28a745;"></div>
-                    <span>Property</span>
+                <div class="map-legend-item ${!visibleAreaTypes.school_zone ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('school_zone')" 
+                     title="Click to show/hide School Zones">
+                    <div class="map-legend-color" style="background: #16a085; border: 2px solid #138d75;"></div>
+                    <span>School Zone</span>
                 </div>
+                ` : ''}
+                ${propertyLegend}
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
                     <span>🌊 Flood Risk Property</span>
@@ -1076,7 +1179,108 @@
             }
         };
 
-        // Update map with current data
+        // Calculate value ranges for gradient visualizations
+        function calculateValueRanges() {
+            if (allProperties.length === 0) return;
+            
+            // Price range
+            const prices = allProperties.map(p => p.price).filter(p => p != null && p > 0);
+            if (prices.length > 0) {
+                propertyValueRanges.price = { min: Math.min(...prices), max: Math.max(...prices) };
+            }
+            
+            // Square footage range
+            const sqfts = allProperties.map(p => p.sqft).filter(s => s != null && s > 0);
+            if (sqfts.length > 0) {
+                propertyValueRanges.sqft = { min: Math.min(...sqfts), max: Math.max(...sqfts) };
+            }
+            
+            // Days on market range (calculate from extracted_at_date)
+            const today = new Date();
+            const daysOnMarket = allProperties
+                .map(p => {
+                    if (!p.extracted_at_date) return null;
+                    const extractedDate = new Date(p.extracted_at_date);
+                    const diffTime = today - extractedDate;
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays >= 0 ? diffDays : null;
+                })
+                .filter(d => d != null);
+            if (daysOnMarket.length > 0) {
+                propertyValueRanges.days_on_market = { min: Math.min(...daysOnMarket), max: Math.max(...daysOnMarket) };
+            }
+        }
+
+        // Get color based on visualization mode
+        function getPropertyColor(prop, isSelected, isInFloodRisk) {
+            // Selected properties always yellow
+            if (isSelected) {
+                return { fill: '#ffc107', stroke: '#fff', weight: 3 };
+            }
+            
+            // Flood risk always blue (unless selected)
+            if (isInFloodRisk) {
+                return { fill: '#3498db', stroke: '#2980b9', weight: 3 };
+            }
+            
+            const mode = visualizationMode || 'property_type';
+            
+            if (mode === 'property_type') {
+                // Color by property type
+                const typeColors = {
+                    'Single-Family': { fill: '#28a745', stroke: '#fff' },
+                    'Multi-Family': { fill: '#17a2b8', stroke: '#fff' },
+                    'Townhouse': { fill: '#6f42c1', stroke: '#fff' },
+                    'Condo': { fill: '#fd7e14', stroke: '#fff' },
+                    'Land': { fill: '#6c757d', stroke: '#fff' }
+                };
+                return typeColors[prop.property_type] || { fill: '#28a745', stroke: '#fff' };
+            } else if (mode === 'price') {
+                // Gradient by price (green = high, red = low)
+                if (!propertyValueRanges.price || !prop.price || prop.price <= 0) {
+                    return { fill: '#6c757d', stroke: '#fff' };
+                }
+                const range = propertyValueRanges.price;
+                const ratio = (prop.price - range.min) / (range.max - range.min);
+                // Interpolate from red (low) to green (high)
+                const r = Math.round(255 * (1 - ratio));
+                const g = Math.round(255 * ratio);
+                return { fill: `rgb(${r}, ${g}, 0)`, stroke: '#fff' };
+            } else if (mode === 'sqft') {
+                // Gradient by square footage (green = large, red = small)
+                if (!propertyValueRanges.sqft || !prop.sqft || prop.sqft <= 0) {
+                    return { fill: '#6c757d', stroke: '#fff' };
+                }
+                const range = propertyValueRanges.sqft;
+                const ratio = (prop.sqft - range.min) / (range.max - range.min);
+                // Interpolate from red (small) to green (large)
+                const r = Math.round(255 * (1 - ratio));
+                const g = Math.round(255 * ratio);
+                return { fill: `rgb(${r}, ${g}, 0)`, stroke: '#fff' };
+            } else if (mode === 'days_on_market') {
+                // Gradient by days on market (green = recent/new, red = old)
+                if (!propertyValueRanges.days_on_market || !prop.extracted_at_date) {
+                    return { fill: '#6c757d', stroke: '#fff' };
+                }
+                const today = new Date();
+                const extractedDate = new Date(prop.extracted_at_date);
+                const diffTime = today - extractedDate;
+                const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                if (days < 0) {
+                    return { fill: '#6c757d', stroke: '#fff' };
+                }
+                const range = propertyValueRanges.days_on_market;
+                const ratio = range.max > range.min ? (days - range.min) / (range.max - range.min) : 0;
+                // Interpolate from green (recent/new) to red (old)
+                const r = Math.round(255 * ratio);
+                const g = Math.round(255 * (1 - ratio));
+                return { fill: `rgb(${r}, ${g}, 0)`, stroke: '#fff' };
+            }
+            
+            // Default
+            return { fill: '#28a745', stroke: '#fff' };
+        }
+
         function updateMap(shouldFitBounds = true) {
             if (!map) {
                 console.log('Map not initialized, skipping updateMap');
@@ -1285,33 +1489,36 @@
                 const isFiltered = isFilteredProp;
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
                 
-                // Create marker with styling based on selection state and flood risk
+                // Get color based on visualization mode
+                const colors = getPropertyColor(prop, isSelected, isInFloodRisk);
+                
+                // Create marker with styling based on selection state, flood risk, and visualization mode
                 let markerOptions;
                 if (isSelected) {
                     markerOptions = {
                         radius: 10,
-                        fillColor: '#ffc107',
-                        color: '#fff',
-                        weight: 3,
+                        fillColor: colors.fill,
+                        color: colors.stroke,
+                        weight: colors.weight || 3,
                         opacity: 1,
                         fillOpacity: 0.9
                     };
                 } else if (isInFloodRisk) {
-                    // Flood risk properties get blue/water color
+                    // Flood risk properties get blue/water color (unless visualization mode overrides)
                     markerOptions = {
                         radius: 7,
-                        fillColor: '#3498db',
-                        color: '#2980b9',
-                        weight: 3,
+                        fillColor: colors.fill,
+                        color: colors.stroke,
+                        weight: colors.weight || 3,
                         opacity: isFiltered ? 1 : 0.7,
                         fillOpacity: isFiltered ? 0.9 : 0.6
                     };
                 } else {
                     markerOptions = {
                         radius: 6,
-                        fillColor: '#28a745',
-                        color: '#fff',
-                        weight: 2,
+                        fillColor: colors.fill,
+                        color: colors.stroke,
+                        weight: colors.weight || 2,
                         opacity: isFiltered ? 1 : 0.6,
                         fillOpacity: isFiltered ? 0.8 : 0.5
                     };
@@ -1971,6 +2178,11 @@
         }
 
         // Event listeners
+        document.getElementById('visualizationMode').addEventListener('change', (e) => {
+            visualizationMode = e.target.value;
+            updateLegend(); // Update legend to reflect new visualization mode
+            updateMap(false); // Update map visualization without refitting bounds
+        });
         document.getElementById('areaFilter').addEventListener('change', filterProperties);
         document.getElementById('propertyTypeFilter').addEventListener('change', filterProperties);
         document.getElementById('includeOlderProperties').addEventListener('change', filterProperties);
@@ -2038,6 +2250,26 @@
 
         // Load data on page load
         loadData();
+
+        // Set last refreshed date
+        function updateLastRefreshed() {
+            const now = new Date();
+            const options = { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            const dateStr = now.toLocaleDateString('en-US', options);
+            const lastRefreshedEl = document.getElementById('lastRefreshed');
+            if (lastRefreshedEl) {
+                lastRefreshedEl.textContent = `Last refreshed: ${dateStr}`;
+            }
+        }
+        
+        // Update on page load
+        updateLastRefreshed();
     </script>
 </body>
 </html>
