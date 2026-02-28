@@ -1076,6 +1076,52 @@
             ).join(' ');
         }
 
+        // Summarize zip codes into ranges for display
+        function summarizeZipCodes(zipCodes) {
+            if (!zipCodes || zipCodes.length === 0) return 'N/A';
+            if (zipCodes.length === 1) return zipCodes[0].toString();
+            
+            // Convert to numbers and sort
+            const sorted = zipCodes.map(z => parseInt(z, 10)).filter(z => !isNaN(z)).sort((a, b) => a - b);
+            if (sorted.length === 0) return zipCodes.join(', ');
+            
+            const ranges = [];
+            let rangeStart = sorted[0];
+            let rangeEnd = sorted[0];
+            
+            for (let i = 1; i < sorted.length; i++) {
+                if (sorted[i] === rangeEnd + 1) {
+                    // Continue the range
+                    rangeEnd = sorted[i];
+                } else {
+                    // End current range and start new one
+                    if (rangeStart === rangeEnd) {
+                        ranges.push(rangeStart.toString());
+                    } else {
+                        ranges.push(`${rangeStart}-${rangeEnd}`);
+                    }
+                    rangeStart = sorted[i];
+                    rangeEnd = sorted[i];
+                }
+            }
+            
+            // Add the last range
+            if (rangeStart === rangeEnd) {
+                ranges.push(rangeStart.toString());
+            } else {
+                ranges.push(`${rangeStart}-${rangeEnd}`);
+            }
+            
+            // If we have many ranges, show approximate summary
+            if (ranges.length > 5) {
+                const min = sorted[0];
+                const max = sorted[sorted.length - 1];
+                return `${min}-${max} (approx, ${sorted.length} codes)`;
+            }
+            
+            return ranges.join(', ');
+        }
+
         // Check if a property is within a geographic area's bounds
         function isPropertyInArea(prop, area) {
             if (!prop.latitude || !prop.longitude) return false;
@@ -1520,7 +1566,6 @@
                     <strong>${school.name || 'Unknown School'}</strong><br>
                     Level: ${school.level || 'N/A'}<br>
                     Grade: ${grade || 'N/A'}<br>
-                    ${school.rating_stars ? `Rating: ${school.rating_stars} stars<br>` : ''}
                     ${school.street ? `${school.street}, ` : ''}${school.city || ''}, ${school.state || ''} ${school.zipcode || ''}
                 `);
                 
@@ -1533,7 +1578,6 @@
                             <strong style="display: block; margin-bottom: 4px; color: ${colors.stroke};">${school.name || 'Unknown School'}</strong>
                             <span style="color: #666; display: block; margin-bottom: 2px; font-size: 11px;">${school.level || 'N/A'} School</span>
                             ${grade ? `<span style="color: #666; font-size: 11px; display: block;">Grade: ${grade}</span>` : ''}
-                            ${school.rating_stars ? `<span style="color: #666; font-size: 11px; display: block;">${school.rating_stars} stars</span>` : ''}
                         </div>
                     `;
                     marker.bindTooltip(tooltipContent, {
@@ -1751,7 +1795,36 @@
             // Add geographic area polygons (only if enabled and area type is visible)
             if (showGeographicAreas) {
                 console.log('Rendering geographic areas, showGeographicAreas:', showGeographicAreas, 'total areas:', geographicAreas.length);
-                geographicAreas.forEach(area => {
+                
+                // Sort areas so smaller/premium zones render on top (last = on top in Leaflet)
+                // Priority: school_zone_sub_division > school_zone > others
+                // Within same type, smaller areas (by bounding box) render on top
+                const sortedAreas = [...geographicAreas].sort((a, b) => {
+                    // Calculate bounding box area for size comparison
+                    const getAreaSize = (area) => {
+                        if (!area.bounds || area.bounds.length === 0) return Infinity;
+                        const bound = area.bounds[0]; // Use first bound
+                        const width = bound.east_lng - bound.west_lng;
+                        const height = bound.north_lat - bound.south_lat;
+                        return width * height;
+                    };
+                    
+                    const aSize = getAreaSize(a);
+                    const bSize = getAreaSize(b);
+                    
+                    // Premium subdivisions always render last (on top)
+                    if (a.area_type === 'school_zone_sub_division' && b.area_type !== 'school_zone_sub_division') return 1;
+                    if (b.area_type === 'school_zone_sub_division' && a.area_type !== 'school_zone_sub_division') return -1;
+                    
+                    // Regular school zones render after subdivisions but before others
+                    if (a.area_type === 'school_zone' && b.area_type !== 'school_zone' && b.area_type !== 'school_zone_sub_division') return 1;
+                    if (b.area_type === 'school_zone' && a.area_type !== 'school_zone' && a.area_type !== 'school_zone_sub_division') return -1;
+                    
+                    // Within same type, smaller areas render last (on top) - larger areas first
+                    return bSize - aSize;
+                });
+                
+                sortedAreas.forEach(area => {
                     if (!area.bounds || area.bounds.length === 0) return;
                     
                     const areaType = area.area_type;
@@ -1798,14 +1871,15 @@
                         polygon.areaData = area;
                         
                         // Create popup and tooltip content
-                        const zipCodes = area.zip_codes ? area.zip_codes.join(', ') : 'N/A';
+                        const zipCodesFull = area.zip_codes ? area.zip_codes.join(', ') : 'N/A';
+                        const zipCodesSummary = area.zip_codes ? summarizeZipCodes(area.zip_codes) : 'N/A';
                         const areaIdEscaped = area.area_id.replace(/'/g, "\\'");
                         const popupContent = `
                             <div style="min-width: 200px;">
                                 <h3 style="margin: 0 0 10px 0; color: ${colors.stroke};">${formatAreaName(area.name)}</h3>
                                 <p style="margin: 5px 0;"><strong>Type:</strong> ${formatAreaName(areaType)}</p>
                                 <p style="margin: 5px 0;"><strong>Description:</strong> ${area.description || 'N/A'}</p>
-                                ${area.zip_codes ? `<p style="margin: 5px 0;"><strong>ZIP Codes:</strong> ${zipCodes}</p>` : ''}
+                                ${area.zip_codes ? `<p style="margin: 5px 0;"><strong>ZIP Codes:</strong> ${zipCodesFull}</p>` : ''}
                                 ${area.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${area.notes}</p>` : ''}
                                 <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
                                 <p style="margin: 5px 0; font-size: 0.9em; color: #666;">
@@ -1816,13 +1890,13 @@
                         
                         polygon.bindPopup(popupContent);
                         
-                        // Create tooltip content for hover
+                        // Create tooltip content for hover (use summarized zip codes)
                         const tooltipContent = `
                             <div style="font-size: 12px; min-width: 200px; max-width: 350px; word-wrap: break-word; overflow-wrap: break-word;">
                                 <strong style="color: ${colors.stroke}; display: block; margin-bottom: 4px;">${formatAreaName(area.name)}</strong>
                                 <span style="color: #666; display: block; margin-bottom: 4px;">${formatAreaName(areaType)}</span>
                                 ${area.description ? `<span style="color: #666; font-size: 11px; display: block; margin-bottom: 4px; word-wrap: break-word;">${area.description}</span>` : ''}
-                                ${area.zip_codes ? `<span style="color: #666; font-size: 11px; display: block;">ZIP: ${zipCodes}</span>` : ''}
+                                ${area.zip_codes ? `<span style="color: #666; font-size: 11px; display: block;">ZIP: ${zipCodesSummary}</span>` : ''}
                             </div>
                         `;
                         
