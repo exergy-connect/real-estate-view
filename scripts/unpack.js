@@ -21,6 +21,14 @@ if (!data.data) {
     throw new Error('Invalid data structure: missing "data" key');
 }
 
+// Sanitize filename by replacing invalid characters
+function sanitizeFilename(str) {
+    return str.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+              .replace(/\s+/g, '_')
+              .replace(/_{2,}/g, '_')
+              .replace(/^_+|_+$/g, '');
+}
+
 const propertyIds = [];
 // Iterate through all entity types (property, school, geographic_area, etc.)
 for (const [entityType, entities] of Object.entries(data.data)) {
@@ -28,14 +36,19 @@ for (const [entityType, entities] of Object.entries(data.data)) {
     
     // Iterate through all entities of this type
     for (const [id, content] of Object.entries(entities)) {
-        // Use entity type and id as the key to avoid collisions
-        const fullId = `${entityType}_${id}`;
+        // Sanitize both entity type and id for filename safety
+        const sanitizedType = sanitizeFilename(entityType);
+        const sanitizedId = sanitizeFilename(id);
+        const fullId = `${sanitizedType}_${sanitizedId}`;
         propertyIds.push(fullId);
+        
+        // Store original id in the content for reference
+        const contentWithId = { ...content, _originalId: id, _entityType: entityType };
         
         // We write these as plain JSON for the Worker to fetch easily
         fs.writeFileSync(
             path.join(OUTPUT_DIR, `${fullId}.json`), 
-            JSON.stringify(content)
+            JSON.stringify(contentWithId)
         );
     }
 }
