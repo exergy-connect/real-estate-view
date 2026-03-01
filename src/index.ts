@@ -6,7 +6,7 @@ let CACHED_DATA: any = null;
 async function loadCachedData(env: any): Promise<any> {
   // If we've already parsed the JSON, return it from RAM (Zero Latency)
   if (!CACHED_DATA) {
-    const response = await env.ASSETS.fetch(new Request("/output/consolidated_data.json.gz"));
+    const response = await env.ASSETS.fetch(new Request("consolidated_data.json.gz"));
     const text = await new Response(
       response.body?.pipeThrough(new DecompressionStream("gzip"))
     ).text();
@@ -29,7 +29,13 @@ export default {
         return await handler(request, env, cachedData);
       } catch (error) {
         console.error('Error handling API route:', error);
-        return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        const errorDetails = {
+          error: 'Internal server error',
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          type: error instanceof Error ? error.constructor.name : typeof error
+        };
+        return new Response(JSON.stringify(errorDetails), {
           status: 500,
           headers: { "Content-Type": "application/json" }
         });
