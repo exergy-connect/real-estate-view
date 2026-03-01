@@ -9,53 +9,64 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   if (CACHED_DATA) return { data: CACHED_DATA, cacheLevel: 0 };
 
   const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl).toString();
-  const cache = (caches as any).default;
-  const cacheRequest = new Request(assetUrl);
+  const cacheKey = "consolidated_data.json";
   
-  // 2. Persistent Disk Layer (Cache API) - cache level 1
-  // Check for compressed data in cache using a Request object as the cache key
-  // The Cache API persists across worker restarts and is shared across all worker instances
-  let response = await cache.match(cacheRequest);
-  let cacheLevel = 1; // Default to cache API level
+  // 2. Persistent Disk Layer (Workers KV) - cache level 1
+  // Check for parsed JSON string in KV store
+  // Workers KV persists across worker restarts and is available on free tier
+  let parsedData: any = null;
+  let cacheLevel = 1; // Default to KV level
   
-  if (!response) {
+  if (env.CACHE_KV) {
+    try {
+      const kvData = await env.CACHE_KV.get(cacheKey, "text");
+      if (kvData) {
+        // Parse the JSON string from KV
+        parsedData = JSON.parse(kvData);
+      }
+    } catch (error) {
+      console.error("Error reading from KV:", error);
+      parsedData = null;
+    }
+  }
+  
+  if (!parsedData) {
     // 3. Network/Asset Layer (The source) - cache level 2
     cacheLevel = 2;
-    response = await env.ASSETS.fetch(cacheRequest);
+    const response = await env.ASSETS.fetch(new Request(assetUrl));
     
     if (!response.ok) {
       throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
     }
     
-    // Check body before caching
+    // Check body before processing
     if (!response.body) {
       throw new Error("Response body is null");
     }
     
-    // Cache the compressed response for next time
-    // Use waitUntil to ensure caching happens in background, but we need to clone
-    // the response since we'll read the body for decompression
-    const responseToCache = response.clone();
-    ctx.waitUntil(cache.put(cacheRequest, responseToCache));
-  }
-
-  // OPTIMIZATION: Stream-to-JSON
-  // Using .json() directly on the DecompressionStream is the 2026 standard.
-  // V8 parses the tokens as they are unzipped, avoiding the 2.3MB string allocation.
-  // Note: brotli is not supported by the DecompressionStream API.
-  if (!response.body) {
-    throw new Error("Response body is null");
+    // OPTIMIZATION: Stream-to-JSON
+    // Using .json() directly on the DecompressionStream is the 2026 standard.
+    // V8 parses the tokens as they are unzipped, avoiding the 2.3MB string allocation.
+    // Note: brotli is not supported by the DecompressionStream API.
+    const decompressionStream = new DecompressionStream("gzip");
+    const decompressedBody = response.body.pipeThrough(decompressionStream);
+    const decompressedResponse = new Response(decompressedBody);
+    
+    // Parse the JSON object
+    parsedData = await decompressedResponse.json();
+    
+    // Cache the parsed JSON as a string in KV for next time (background task)
+    if (env.CACHE_KV) {
+      const jsonString = JSON.stringify(parsedData);
+      ctx.waitUntil(env.CACHE_KV.put(cacheKey, jsonString));
+    }
   }
   
-  const decompressionStream = new DecompressionStream("gzip");
-  const decompressedBody = response.body.pipeThrough(decompressionStream);
-  const decompressedResponse = new Response(decompressedBody);
-  
-  // Parse the JSON object - this is the parsed object we'll use
-  CACHED_DATA = await decompressedResponse.json();
+  // Store in memory for future requests
+  CACHED_DATA = parsedData;
   
   // The parsed JSON object (CACHED_DATA) is now in memory for future requests
-  // Cache API stores the compressed response, memory stores the parsed object
+  // Workers KV stores the parsed JSON string, memory stores the parsed object
   
   return { data: CACHED_DATA, cacheLevel };
 }

@@ -14,6 +14,12 @@
     "directory": "docs",
     "binding": "ASSETS"
   },
+  "kv_namespaces": [
+    {
+      "binding": "CACHE_KV",
+      "id": "d1612d6a41254c0aa4b11f6fcca85dcf"
+    }
+  ],
   "compatibility_flags": [
     "nodejs_compat"
   ]
