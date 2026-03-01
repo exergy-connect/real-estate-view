@@ -60,12 +60,16 @@ async function getEntity(request: Request, env: any, id: string): Promise<{ enti
 
 export const apiRoutes: Record<string, Handler> = {
   "/api": async (req, env, loadCachedData, startTime) => {
-    const ioStart = performance.now();
+    const ioStart = startTime || performance.now();
     const cachedData = await loadCachedData!();
-    const ioMs = performance.now() - ioStart;
-    const cpuMs = 0; // No CPU work, just I/O
+    const ioEnd = performance.now();
+    const ioMs = ioEnd - ioStart;
     
-    return new Response(JSON.stringify(cachedData), {
+    // CPU: JSON stringification
+    const jsonString = JSON.stringify(cachedData);
+    const cpuMs = performance.now() - ioEnd;
+    
+    return new Response(jsonString, {
       headers: createResponseHeaders('application/json', ioMs, cpuMs)
     });
   },

@@ -8,15 +8,17 @@ import requests
 import time
 from typing import Optional
 
-def get_server_timing(url: str) -> Optional[str]:
-    """Fetch the URL and return the Server-Timing header value."""
+def get_server_timing(url: str) -> tuple[Optional[str], Optional[str]]:
+    """Fetch the URL and return the Server-Timing header value and response body."""
     try:
         response = requests.get(url)
         response.raise_for_status()
-        return response.headers.get('Server-Timing', None)
+        server_timing = response.headers.get('Server-Timing', None)
+        body = response.text
+        return server_timing, body
     except requests.RequestException as e:
         print(f"Error fetching {url}: {e}")
-        return None
+        return None, None
 
 def main():
     url = "https://real-estate-view.jvb127.workers.dev/api/entity?id=fault_system_Clinton_Fault"
@@ -28,7 +30,7 @@ def main():
         print(f"\nRequest #{i + 1}:")
         print("-" * 80)
         
-        server_timing = get_server_timing(url)
+        server_timing, body = get_server_timing(url)
         
         if server_timing:
             print(f"Server-Timing: {server_timing}")
@@ -39,6 +41,17 @@ def main():
                 print(f"  - {metric}")
         else:
             print("No Server-Timing header found")
+        
+        if body:
+            print(f"\nResponse Body:")
+            try:
+                # Try to pretty-print JSON
+                import json
+                parsed = json.loads(body)
+                print(json.dumps(parsed, indent=2))
+            except json.JSONDecodeError:
+                # If not JSON, just print as-is
+                print(body)
         
         # Wait 1 second before next request (except after the last one)
         if i < 2:
