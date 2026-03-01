@@ -1,17 +1,19 @@
 // Define a simple type for our handlers
-type Handler = (request: Request, env: any, cachedData?: any) => Promise<Response>;
+type LoadCachedDataFn = () => Promise<any>;
+type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn) => Promise<Response>;
 
 export const apiRoutes: Record<string, Handler> = {
-  "/api": async (req, env, cachedData) => {
+  "/api": async (req, env, loadCachedData) => {
+    const cachedData = await loadCachedData!();
     return new Response(JSON.stringify(cachedData), {
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   },
-  "/api/compute": async (req, env, cachedData) => {
-    const data = cachedData;
+  "/api/compute": async (req, env, loadCachedData) => {
+    const data = await loadCachedData!();
     
     // Get request body if present (for POST/PUT requests)
-    let requestData = null;
+    let requestData: any = null;
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       try {
         requestData = await req.json();
