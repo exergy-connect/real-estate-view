@@ -10,16 +10,18 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
 
   const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl).toString();
   const cache = (caches as any).default;
+  const cacheRequest = new Request(assetUrl);
   
   // 2. Persistent Disk Layer (Cache API) - cache level 1
-  // Check for compressed data in cache
-  let response = await cache.match(assetUrl);
+  // Check for compressed data in cache using a Request object as the cache key
+  // The Cache API persists across worker restarts and is shared across all worker instances
+  let response = await cache.match(cacheRequest);
   let cacheLevel = 1; // Default to cache API level
   
   if (!response) {
     // 3. Network/Asset Layer (The source) - cache level 2
     cacheLevel = 2;
-    response = await env.ASSETS.fetch(new Request(assetUrl));
+    response = await env.ASSETS.fetch(cacheRequest);
     
     if (!response.ok) {
       throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
@@ -31,7 +33,10 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
     }
     
     // Cache the compressed response for next time
-    ctx.waitUntil(cache.put(assetUrl, response.clone()));
+    // Use waitUntil to ensure caching happens in background, but we need to clone
+    // the response since we'll read the body for decompression
+    const responseToCache = response.clone();
+    ctx.waitUntil(cache.put(cacheRequest, responseToCache));
   }
 
   // OPTIMIZATION: Stream-to-JSON
