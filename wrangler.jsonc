@@ -2,7 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "real-estate-view",
   "build": {
-    "command": "node scripts/unpack.js && npm run build-worker"
+    "command": "node scripts/unpack.js", // This is the "Magic" hook
+    "watch_dir": "docs"                  // Re-run if master JSON changes
   },
   "main": "src/index.ts",
   "compatibility_date": "2026-02-28",
