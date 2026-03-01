@@ -2,13 +2,17 @@
 type LoadCachedDataFn = () => Promise<any>;
 type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn) => Promise<Response>;
 
-export async function getEntity(env: any, id: string) {
-  // Directly fetch the specific small asset
-  const response = await env.ASSETS.fetch(new Request(`/output/data/entities/${id}.json`));
+async function getEntity(request: Request, env: any, id: string) {
+  // 1. Get the origin (e.g., https://houston-api.antonio.workers.dev)
+  const { origin } = new URL(request.url);
   
-  if (!response.ok) return null;
+  // 2. Combine the origin with your path to make it absolute
+  const assetUrl = `${origin}/output/data/entities/${id}.json`;
   
-  // This JSON is only 2KB - parsing takes < 0.1ms
+  // 3. Now env.ASSETS.fetch will work
+  const response = await env.ASSETS.fetch(new Request(assetUrl));
+  
+  if (!response.ok) throw new Error(`Entity ${id} not found at ${assetUrl}`);
   return await response.json();
 }
 
@@ -90,20 +94,21 @@ export const apiRoutes: Record<string, Handler> = {
       });
     }
     
-    const entity = await getEntity(env, id);
-    
-    if (!entity) {
-      return new Response(JSON.stringify({ error: "Entity not found" }), {
+    try {
+      const entity = await getEntity(req, env, id);
+      return new Response(JSON.stringify(entity), {
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Entity not found" 
+      }), {
         status: 404,
         headers: { "Content-Type": "application/json" }
       });
     }
-    
-    return new Response(JSON.stringify(entity), {
-      headers: { 
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
   }
 };
