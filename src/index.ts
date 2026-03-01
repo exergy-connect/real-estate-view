@@ -3,10 +3,11 @@ import { apiRoutes } from './api';
 // This stays "warm" in the Worker's RAM across multiple requests
 let CACHED_DATA: any = null;
 
-async function loadCachedData(env: any): Promise<any> {
+async function loadCachedData(env: any, baseUrl: string): Promise<any> {
   // If we've already parsed the JSON, return it from RAM (Zero Latency)
   if (!CACHED_DATA) {
-    const response = await env.ASSETS.fetch(new Request("/consolidated_data.json.gz"));
+    const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl);
+    const response = await env.ASSETS.fetch(new Request(assetUrl));
     const text = await new Response(
       response.body?.pipeThrough(new DecompressionStream("gzip"))
     ).text();
@@ -25,7 +26,7 @@ export default {
     if (handler) {
       try {
         // Load cached data and pass it to handler
-        const cachedData = await loadCachedData(env);
+        const cachedData = await loadCachedData(env, url.origin);
         return await handler(request, env, cachedData);
       } catch (error) {
         console.error('Error handling API route:', error);
