@@ -2,6 +2,16 @@
 type LoadCachedDataFn = () => Promise<any>;
 type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn) => Promise<Response>;
 
+export async function getEntity(env: any, id: string) {
+  // Directly fetch the specific small asset
+  const response = await env.ASSETS.fetch(new Request(`/data/entities/${id}.json`));
+  
+  if (!response.ok) return null;
+  
+  // This JSON is only 2KB - parsing takes < 0.1ms
+  return await response.json();
+}
+
 export const apiRoutes: Record<string, Handler> = {
   "/api": async (req, env, loadCachedData) => {
     const cachedData = await loadCachedData!();
@@ -68,5 +78,32 @@ export const apiRoutes: Record<string, Handler> = {
   },
   "/api/status": async () => {
     return new Response("Kernel Online", { status: 200 });
+  },
+  "/api/entity": async (req, env) => {
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id");
+    
+    if (!id) {
+      return new Response(JSON.stringify({ error: "Missing 'id' parameter" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    
+    const entity = await getEntity(env, id);
+    
+    if (!entity) {
+      return new Response(JSON.stringify({ error: "Entity not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    
+    return new Response(JSON.stringify(entity), {
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
   }
 };

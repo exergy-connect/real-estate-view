@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "real-estate-view",
+  "build": {
+    "command": "node scripts/unpack.js && npm run build-worker"
+  },
   "main": "src/index.ts",
   "compatibility_date": "2026-02-28",
   "observability": {
