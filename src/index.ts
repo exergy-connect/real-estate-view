@@ -3,26 +3,46 @@ import { apiRoutes } from './api';
 // This stays "warm" in the Worker's RAM across multiple requests
 let CACHED_DATA: any = null;
 
-async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ data: any; cacheLevel: number }> {
-  // 1. Memory Layer (The fastest) - cache level 0
+// Maximum TTL for cached data in seconds (default: 1 hour)
+const MAX_TTL_SECONDS = 300;
+
+async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ data: any; cacheCode: number }> {
+  // 1. Memory Layer (The fastest) - cache code 0
   // This is the parsed JSON object, ready to use
-  if (CACHED_DATA) return { data: CACHED_DATA, cacheLevel: 0 };
+  if (CACHED_DATA) return { data: CACHED_DATA, cacheCode: 0 };
 
   const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl).toString();
   const cacheKey = "consolidated_data.json";
   
-  // 2. Persistent Disk Layer (Workers KV) - cache level 1
-  // Check for parsed JSON string in KV store
+  // 2. Persistent Disk Layer (Workers KV) - cache code 1
+  // Check for parsed JSON string in KV store with TTL validation using metadata
   // Workers KV persists across worker restarts and is available on free tier
   let parsedData: any = null;
-  let cacheLevel = 1; // Default to KV level
+  let cacheCode = 1; // Default to KV code
+  let cachedMetadata: { cachedAt?: number; dataTimestamp?: number } | null = null;
+  let ttlExpired = false;
   
   if (env.CACHE_KV) {
     try {
-      const kvData = await env.CACHE_KV.get(cacheKey, "text");
-      if (kvData) {
-        // Parse the JSON string from KV
-        parsedData = JSON.parse(kvData);
+      const kvResult = await env.CACHE_KV.getWithMetadata(cacheKey, "text");
+      if (kvResult && kvResult.value) {
+        // Check metadata for TTL
+        const metadata = kvResult.metadata as { cachedAt?: number; dataTimestamp?: number } | null;
+        if (metadata && metadata.cachedAt) {
+          const ageSeconds = (Date.now() - metadata.cachedAt) / 1000;
+          
+          if (ageSeconds < MAX_TTL_SECONDS) {
+            // Cache is valid - parse the JSON string
+            parsedData = JSON.parse(kvResult.value);
+            cachedMetadata = metadata;
+          } else {
+            // Cache expired - mark as expired but still have the data for comparison
+            ttlExpired = true;
+            parsedData = null;
+            cachedMetadata = metadata;
+          }
+        }
+        // If no metadata, treat as cache miss (legacy entries are no longer supported)
       }
     } catch (error) {
       console.error("Error reading from KV:", error);
@@ -31,8 +51,8 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   }
   
   if (!parsedData) {
-    // 3. Network/Asset Layer (The source) - cache level 2
-    cacheLevel = 2;
+    // 3. Network/Asset Layer (The source) - cache code 2 (cache miss) or 3 (TTL expired)
+    cacheCode = ttlExpired ? 3 : 2;
     const response = await env.ASSETS.fetch(new Request(assetUrl));
     
     if (!response.ok) {
@@ -55,10 +75,27 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
     // Parse the JSON object
     parsedData = await decompressedResponse.json();
     
-    // Cache the parsed JSON as a string in KV for next time (background task)
-    if (env.CACHE_KV) {
+    // Extract timestamp from consolidated_data.json structure
+    // The timestamp field is at the root level: { "timestamp": "2026-02-28T19:28:08.799870+00:00", ... }
+    if (!parsedData.timestamp) {
+      throw new Error("consolidated_data.json is missing required 'timestamp' field");
+    }
+    const dataTimestamp = new Date(parsedData.timestamp).getTime();
+    
+    // Only update cache if:
+    // 1. Cache was empty (cache miss), OR
+    // 2. The new data timestamp is newer than what's in cache
+    const shouldUpdateCache = !cachedMetadata || 
+      (cachedMetadata.dataTimestamp && dataTimestamp > cachedMetadata.dataTimestamp);
+    
+    if (shouldUpdateCache && env.CACHE_KV) {
+      // Cache the parsed JSON with metadata (including timestamp) in KV for next time (background task)
       const jsonString = JSON.stringify(parsedData);
-      ctx.waitUntil(env.CACHE_KV.put(cacheKey, jsonString));
+      const metadata = {
+        cachedAt: Date.now(),
+        dataTimestamp: dataTimestamp
+      };
+      ctx.waitUntil(env.CACHE_KV.put(cacheKey, jsonString, { metadata }));
     }
   }
   
@@ -68,7 +105,13 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   // The parsed JSON object (CACHED_DATA) is now in memory for future requests
   // Workers KV stores the parsed JSON string, memory stores the parsed object
   
-  return { data: CACHED_DATA, cacheLevel };
+  // Cache codes:
+  // 0 = Memory cache (fastest)
+  // 1 = Workers KV cache (persistent)
+  // 2 = Network/Asset fetch (cache miss)
+  // 3 = Network/Asset fetch (TTL expired)
+  
+  return { data: CACHED_DATA, cacheCode };
 }
 
 export default {
