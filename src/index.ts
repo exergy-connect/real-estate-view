@@ -6,7 +6,7 @@ let CACHED_DATA: any = null;
 async function loadCachedData(env: any): Promise<any> {
   // If we've already parsed the JSON, return it from RAM (Zero Latency)
   if (!CACHED_DATA) {
-    const response = await env.ASSETS.fetch(new Request("consolidated_data.json.gz"));
+    const response = await env.ASSETS.fetch(new Request("/consolidated_data.json.gz"));
     const text = await new Response(
       response.body?.pipeThrough(new DecompressionStream("gzip"))
     ).text();
