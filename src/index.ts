@@ -1,5 +1,20 @@
 import { apiRoutes } from './api';
 
+// This stays "warm" in the Worker's RAM across multiple requests
+let CACHED_DATA: any = null;
+
+async function loadCachedData(env: any): Promise<any> {
+  // If we've already parsed the JSON, return it from RAM (Zero Latency)
+  if (!CACHED_DATA) {
+    const response = await env.ASSETS.fetch(new Request("/output/consolidated_data.json.gz"));
+    const text = await new Response(
+      response.body?.pipeThrough(new DecompressionStream("gzip"))
+    ).text();
+    CACHED_DATA = JSON.parse(text);
+  }
+  return CACHED_DATA;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -9,7 +24,9 @@ export default {
 
     if (handler) {
       try {
-        return await handler(request, env);
+        // Load cached data and pass it to handler
+        const cachedData = await loadCachedData(env);
+        return await handler(request, env, cachedData);
       } catch (error) {
         console.error('Error handling API route:', error);
         return new Response(JSON.stringify({ error: 'Internal server error' }), {
@@ -22,14 +39,6 @@ export default {
     // Default to Assets for HTML/Data
     try {
       const response = await env.ASSETS.fetch(request);
-      
-      // Simple cache-control for the data file
-      // if (url.pathname.endsWith("consolidated_data.js")) {
-      //   const cachedResponse = new Response(response.body, response);
-      //   cachedResponse.headers.set("Cache-Control", "public, max-age=3600");
-      //   return cachedResponse;
-      // }
-
       return response;
     } catch (error) {
       console.error('Error fetching asset:', error);
