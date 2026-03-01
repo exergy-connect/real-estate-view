@@ -27,12 +27,16 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<any>
   // Using .json() directly on the DecompressionStream is the 2026 standard.
   // V8 parses the tokens as they are unzipped, avoiding the 2.3MB string allocation.
   // Note: brotli is not supported by the DecompressionStream API.
+  if (!response.body) {
+    throw new Error("Response body is null");
+  }
+  
   const decompressionStream = new DecompressionStream("gzip");
-  const decompressedBody = response.body?.pipeThrough(decompressionStream);
-
-  if (!decompressedBody) throw new Error("Failed to initialize data stream");
-
-  CACHED_DATA = await new Response(decompressedBody).json();
+  const decompressedBody = response.body.pipeThrough(decompressionStream);
+  const decompressedResponse = new Response(decompressedBody);
+  
+  // Ensure the stream is fully consumed before parsing
+  CACHED_DATA = await decompressedResponse.json();
   
   return CACHED_DATA;
 }
