@@ -16,17 +16,31 @@ const compressedBuffer = fs.readFileSync(MASTER_FILE);
 const decompressedBuffer = zlib.gunzipSync(compressedBuffer);
 const data = JSON.parse(decompressedBuffer.toString('utf-8'));
 
-// 4. Shred it
-const propertyIds = Object.keys(data.properties);
-console.log(`Unpacking ${propertyIds.length} entities...`);
-
-for (const [id, content] of Object.entries(data.properties)) {
-    // We write these as plain JSON for the Worker to fetch easily
-    fs.writeFileSync(
-        path.join(OUTPUT_DIR, `${id}.json`), 
-        JSON.stringify(content)
-    );
+// 4. Shred it - consolidated_data.json has structure: { data: { entity_type: { id: {...} } } }
+if (!data.data) {
+    throw new Error('Invalid data structure: missing "data" key');
 }
+
+const propertyIds = [];
+// Iterate through all entity types (property, school, geographic_area, etc.)
+for (const [entityType, entities] of Object.entries(data.data)) {
+    if (!entities || typeof entities !== 'object') continue;
+    
+    // Iterate through all entities of this type
+    for (const [id, content] of Object.entries(entities)) {
+        // Use entity type and id as the key to avoid collisions
+        const fullId = `${entityType}_${id}`;
+        propertyIds.push(fullId);
+        
+        // We write these as plain JSON for the Worker to fetch easily
+        fs.writeFileSync(
+            path.join(OUTPUT_DIR, `${fullId}.json`), 
+            JSON.stringify(content)
+        );
+    }
+}
+
+console.log(`Unpacking ${propertyIds.length} entities...`);
 
 // 5. Save the index
 fs.writeFileSync(path.join(OUTPUT_DIR, '../index.json'), JSON.stringify(propertyIds));
