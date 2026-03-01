@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib'; // 1. Import the compression module
 
-const MASTER_FILE = './docs/consolidated_data.json.gz'; // Point to your .gz file
-const OUTPUT_DIR = './docs/data/entities';
+const MASTER_FILE = './docs/output/consolidated_data.json.gz'; // Point to your .gz file
+const OUTPUT_DIR = './docs/output/data/entities';
 
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 

@@ -4,7 +4,7 @@ type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn) =
 
 export async function getEntity(env: any, id: string) {
   // Directly fetch the specific small asset
-  const response = await env.ASSETS.fetch(new Request(`/data/entities/${id}.json`));
+  const response = await env.ASSETS.fetch(new Request(`/output/data/entities/${id}.json`));
   
   if (!response.ok) return null;
   
