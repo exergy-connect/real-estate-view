@@ -50,9 +50,10 @@ export default {
 
     if (handler) {
       try {
+        const startTime = performance.now();
         // Create a lazy-loading function for handlers that need cached data
         const loadCachedDataFn = async () => await loadCachedData(env, ctx, url.origin);
-        return await handler(request, env, loadCachedDataFn);
+        return await handler(request, env, loadCachedDataFn, startTime);
       } catch (error) {
         console.error('Error handling API route:', error);
         const errorDetails = {

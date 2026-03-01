@@ -80,6 +80,7 @@ The worker implements a three-tier caching system for optimal performance:
   - Fetches from `docs/output/data/entities/<id>.json`
   - Fast lookup (~2KB file, <0.1ms parse time)
   - Returns 404 if entity not found
+  - Example: `https://real-estate-view.jvb127.workers.dev/api/entity?id=fault_system_Clinton_Fault`
 
 - **`/api/status`**: Health check endpoint
   - Returns "Kernel Online" status
