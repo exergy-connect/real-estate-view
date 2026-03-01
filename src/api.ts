@@ -36,18 +36,26 @@ function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number)
   };
 }
 
-async function getEntity(request: Request, env: any, id: string) {
+async function getEntity(request: Request, env: any, id: string): Promise<{ entity: any; ioMs: number; cpuMs: number }> {
   // 1. Get the origin (e.g., https://houston-api.antonio.workers.dev)
   const { origin } = new URL(request.url);
   
   // 2. Combine the origin with your path to make it absolute
   const assetUrl = `${origin}/output/data/entities/${id}.json`;
   
-  // 3. Now env.ASSETS.fetch will work
+  // 3. I/O: Fetch the asset
+  const ioStart = performance.now();
   const response = await env.ASSETS.fetch(new Request(assetUrl));
+  const ioMs = performance.now() - ioStart;
   
   if (!response.ok) throw new Error(`Entity ${id} not found at ${assetUrl}`);
-  return await response.json();
+  
+  // 4. CPU: Parse JSON
+  const cpuStart = performance.now();
+  const entity = await response.json();
+  const cpuMs = performance.now() - cpuStart;
+  
+  return { entity, ioMs, cpuMs };
 }
 
 export const apiRoutes: Record<string, Handler> = {
@@ -143,10 +151,7 @@ export const apiRoutes: Record<string, Handler> = {
     }
     
     try {
-      const ioStart = performance.now();
-      const entity = await getEntity(req, env, id);
-      const ioMs = performance.now() - ioStart;
-      const cpuMs = 0; // Just I/O, no CPU work
+      const { entity, ioMs, cpuMs } = await getEntity(req, env, id);
       
       return new Response(JSON.stringify(entity), {
         headers: createResponseHeaders('application/json', ioMs, cpuMs)
