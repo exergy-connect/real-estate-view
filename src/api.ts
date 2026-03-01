@@ -5,11 +5,14 @@ type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn, s
 /**
  * Creates Server-Timing header value from performance metrics
  */
-function createServerTimingHeader(ioMs: number, cpuMs: number): string {
+function createServerTimingHeader(ioMs: number, cpuMs: number, cacheLevel?: number): string {
   const metrics = [
     `io;dur=${ioMs.toFixed(2)}`,
     `cpu;dur=${cpuMs.toFixed(2)}`
   ];
+  if (cacheLevel !== undefined) {
+    metrics.push(`cache;desc=${cacheLevel}`);
+  }
   return metrics.join(', ');
 }
 
@@ -28,10 +31,10 @@ function getCorsHeaders(): Record<string, string> {
 /**
  * Creates response headers with Server-Timing and CORS
  */
-function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number): Record<string, string> {
+function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number, cacheLevel?: number): Record<string, string> {
   return {
     'Content-Type': contentType,
-    'Server-Timing': createServerTimingHeader(ioMs, cpuMs),
+    'Server-Timing': createServerTimingHeader(ioMs, cpuMs, cacheLevel),
     ...getCorsHeaders()
   };
 }
@@ -61,7 +64,7 @@ async function getEntity(request: Request, env: any, id: string): Promise<{ enti
 export const apiRoutes: Record<string, Handler> = {
   "/api": async (req, env, loadCachedData, startTime) => {
     const ioStart = startTime || performance.now();
-    const cachedData = await loadCachedData!();
+    const { data: cachedData, cacheLevel } = await loadCachedData!();
     const ioEnd = performance.now();
     const ioMs = ioEnd - ioStart;
     
@@ -69,13 +72,14 @@ export const apiRoutes: Record<string, Handler> = {
     const jsonString = JSON.stringify(cachedData);
     const cpuMs = performance.now() - ioEnd;
     
-    return new Response(jsonString, {
-      headers: createResponseHeaders('application/json', ioMs, cpuMs)
-    });
+    const headers = createResponseHeaders('application/json', ioMs, cpuMs, cacheLevel);
+    headers['X-Cache-Level'] = cacheLevel.toString();
+    
+    return new Response(jsonString, { headers });
   },
   "/api/compute": async (req, env, loadCachedData, startTime) => {
-    const ioStart = performance.now();
-    const data = await loadCachedData!();
+    const ioStart = startTime || performance.now();
+    const { data, cacheLevel } = await loadCachedData!();
     const ioMs = performance.now() - ioStart;
     
     // Get request body if present (for POST/PUT requests)
@@ -126,9 +130,10 @@ export const apiRoutes: Record<string, Handler> = {
     
     const cpuMs = performance.now() - cpuStart;
     
-    return new Response(JSON.stringify(modifiedData), {
-      headers: createResponseHeaders('application/json', ioMs, cpuMs)
-    });
+    const headers = createResponseHeaders('application/json', ioMs, cpuMs, cacheLevel);
+    headers['X-Cache-Level'] = cacheLevel.toString();
+    
+    return new Response(JSON.stringify(modifiedData), { headers });
   },
   "/api/status": async (req, env, loadCachedData, startTime) => {
     const cpuStart = performance.now();

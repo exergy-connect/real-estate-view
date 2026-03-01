@@ -3,23 +3,34 @@ import { apiRoutes } from './api';
 // This stays "warm" in the Worker's RAM across multiple requests
 let CACHED_DATA: any = null;
 
-async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<any> {
-  // 1. Memory Layer (The fastest)
-  if (CACHED_DATA) return CACHED_DATA;
+async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ data: any; cacheLevel: number }> {
+  // 1. Memory Layer (The fastest) - cache level 0
+  // This is the parsed JSON object, ready to use
+  if (CACHED_DATA) return { data: CACHED_DATA, cacheLevel: 0 };
 
   const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl).toString();
   const cache = (caches as any).default;
   
-  // 2. Persistent Disk Layer (Cache API)
-  // This survives Worker restarts/evictions
+  // 2. Persistent Disk Layer (Cache API) - cache level 1
+  // Check for compressed data in cache
   let response = await cache.match(assetUrl);
-
+  let cacheLevel = 1; // Default to cache API level
+  
   if (!response) {
-    // 3. Network/Asset Layer (The source)
+    // 3. Network/Asset Layer (The source) - cache level 2
+    cacheLevel = 2;
     response = await env.ASSETS.fetch(new Request(assetUrl));
     
-    // Cache it for next time (Background task so we don't block)
-    // We clone because the body can only be read once
+    if (!response.ok) {
+      throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
+    }
+    
+    // Check body before caching
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
+    
+    // Cache the compressed response for next time
     ctx.waitUntil(cache.put(assetUrl, response.clone()));
   }
 
@@ -35,10 +46,13 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<any>
   const decompressedBody = response.body.pipeThrough(decompressionStream);
   const decompressedResponse = new Response(decompressedBody);
   
-  // Ensure the stream is fully consumed before parsing
+  // Parse the JSON object - this is the parsed object we'll use
   CACHED_DATA = await decompressedResponse.json();
   
-  return CACHED_DATA;
+  // The parsed JSON object (CACHED_DATA) is now in memory for future requests
+  // Cache API stores the compressed response, memory stores the parsed object
+  
+  return { data: CACHED_DATA, cacheLevel };
 }
 
 export default {
