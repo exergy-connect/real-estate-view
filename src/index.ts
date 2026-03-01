@@ -7,7 +7,7 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<any>
   // 1. Memory Layer (The fastest)
   if (CACHED_DATA) return CACHED_DATA;
 
-  const assetUrl = new URL("output/consolidated_data.json.br", baseUrl).toString();
+  const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl).toString();
   const cache = (caches as any).default;
   
   // 2. Persistent Disk Layer (Cache API)
@@ -26,7 +26,8 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<any>
   // OPTIMIZATION: Stream-to-JSON
   // Using .json() directly on the DecompressionStream is the 2026 standard.
   // V8 parses the tokens as they are unzipped, avoiding the 2.3MB string allocation.
-  const decompressionStream = new DecompressionStream("br" as any);
+  // Note: brotli is not supported by the DecompressionStream API.
+  const decompressionStream = new DecompressionStream("gzip");
   const decompressedBody = response.body?.pipeThrough(decompressionStream);
 
   if (!decompressedBody) throw new Error("Failed to initialize data stream");
