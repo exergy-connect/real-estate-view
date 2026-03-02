@@ -11,7 +11,7 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   // Create a smart fetcher that handles ETag revalidation and Gzip decompression
   const fetcher = createSmartFetcher(env, assetUrl);
   
-  const result = await getCachedJSON(env, ctx, cacheKey, MAX_TTL_MS, fetcher, true); // Parse JSON
+  const result = await getCachedJSON({ env, ctx, cacheKey, ttl_ms: MAX_TTL_MS, fetcher, parse: true }); // Parse JSON
   
   return { data: result.data, cacheStatus: result.cacheStatus };
 }

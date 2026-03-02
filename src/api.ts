@@ -96,7 +96,7 @@ async function loadCachedModel(
   const fetcher = createSmartFetcher(env, assetUrl);
   
   const ioStart = performance.now();
-  const result = await getCachedJSON(env, ctx, cacheKey, ttl_ms, fetcher, false); // Don't parse JSON
+  const result = await getCachedJSON({ env, ctx, cacheKey, ttl_ms, fetcher, parse: false }); // Don't parse JSON
   const ioMs = performance.now() - ioStart;
   
   return {
