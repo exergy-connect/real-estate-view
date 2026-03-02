@@ -654,6 +654,116 @@
       ],
       "x-version": 2
     },
+    "search_profile": {
+      "type": "object",
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "description": "Unique identifier for the search profile. Used as the primary key to store and retrieve search configurations."
+        },
+        "price": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "description": "Minimum price filter in dollars. If omitted, no minimum price constraint is applied. Properties with prices at or above this value will match."
+            },
+            "max": {
+              "type": "integer",
+              "description": "Maximum price filter in dollars. If omitted, no maximum price constraint is applied. Properties with prices at or below this value will match."
+            }
+          },
+          "required": [],
+          "description": "Price range filter. If omitted, no price constraints are applied. Both min and max subcomponents are optional - if min is omitted, no minimum price constraint is applied; if max is omitted, no maximum price constraint is applied."
+        },
+        "maintenance_fee": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "description": "Minimum monthly maintenance fee filter in dollars. If omitted, no minimum maintenance fee constraint is applied. Properties with maintenance fees at or above this value will match."
+            },
+            "max": {
+              "type": "integer",
+              "description": "Maximum monthly maintenance fee filter in dollars. If omitted, no maximum maintenance fee constraint is applied. Properties with maintenance fees at or below this value will match."
+            }
+          },
+          "required": [],
+          "description": "Monthly maintenance fee range filter. If omitted, no maintenance fee constraints are applied. Both min and max subcomponents are optional - if min is omitted, no minimum maintenance fee constraint is applied; if max is omitted, no maximum maintenance fee constraint is applied."
+        },
+        "property_types": {
+          "type": "array",
+          "description": "Filter list of property types to include in search. Valid values: Condo, Land, Multi-Family, Single-Family, Townhouse. If omitted or empty, all property types will match. Only properties with types in this list will be included in search results.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Condo",
+              "Land",
+              "Multi-Family",
+              "Single-Family",
+              "Townhouse"
+            ]
+          }
+        },
+        "zipcodes": {
+          "type": "array",
+          "description": "Filter list of ZIP codes to search within. If omitted or empty, all ZIP codes will match. Only properties in the specified ZIP codes will be included in search results.",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "school_grade": {
+          "type": "object",
+          "properties": {
+            "elementary": {
+              "type": "string",
+              "description": "Minimum school grade filter for elementary schools (e.g., 'A', 'B', 'C'). If omitted, no elementary school grade constraint is applied. Only properties with elementary schools rated at or above this grade will match.",
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "F"
+              ]
+            },
+            "middle": {
+              "type": "string",
+              "description": "Minimum school grade filter for middle schools (e.g., 'A', 'B', 'C'). If omitted, no middle school grade constraint is applied. Only properties with middle schools rated at or above this grade will match.",
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "F"
+              ]
+            },
+            "high": {
+              "type": "string",
+              "description": "Minimum school grade filter for high schools (e.g., 'A', 'B', 'C'). If omitted, no high school grade constraint is applied. Only properties with high schools rated at or above this grade will match.",
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "F"
+              ]
+            }
+          },
+          "required": [],
+          "description": "School grade filter for elementary, middle, and high school levels. If omitted, no school grade constraints are applied. Each subcomponent is optional - if a level is omitted, no grade constraint is applied for that level. Only properties with schools matching the specified grades at each level will be included in search results. Valid grade values: A, B, C, D, F."
+        },
+        "opportunity_zone_only": {
+          "type": "boolean",
+          "description": "If true, only show properties located in opportunity zones. If false or omitted, properties in both opportunity zones and non-opportunity zones will match.",
+          "default": false
+        }
+      },
+      "required": [
+        "profile_id"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
     "state": {
       "type": "object",
       "properties": {
@@ -734,6 +844,37 @@
       ],
       "x-created": 2,
       "x-version": 1
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Unique change identifier (monotonically increasing)"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of the change"
+        },
+        "author": {
+          "type": "string",
+          "description": "Author of the change"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note describing the change"
+        },
+        "git_commit_hash": {
+          "type": "string",
+          "description": "Git commit hash corresponding to this change"
+        }
+      },
+      "required": [
+        "id",
+        "timestamp"
+      ],
+      "additionalProperties": false
     }
   },
   "type": "object",
@@ -834,6 +975,12 @@
         "$ref": "#/$defs/school"
       }
     },
+    "search_profile": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/search_profile"
+      }
+    },
     "state": {
       "type": "array",
       "items": {
@@ -851,7 +998,21 @@
       "items": {
         "$ref": "#/$defs/zipcode_area"
       }
+    },
+    "change": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/change"
+      }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "changes": [
+    {
+      "id": 1,
+      "timestamp": "2026-03-02T12:04:15.796065",
+      "author": "jeroen",
+      "note": "Consolidate har_model with search_profile and composite enum support"
+    }
+  ]
 }
