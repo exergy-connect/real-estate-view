@@ -318,7 +318,6 @@
             display: flex;
             align-items: center;
             gap: 5px;
-            white-space: nowrap;
         }
 
         .property-detail-item strong {
@@ -345,13 +344,13 @@
 
         .property-link {
             display: inline-block;
-            margin-top: 0;
-            padding: 5px 10px;
+            margin-top: 15px;
+            padding: 8px 16px;
             background: #1a5f3f;
             color: white;
             text-decoration: none;
-            border-radius: 4px;
-            font-size: 0.75em;
+            border-radius: 6px;
+            font-size: 0.9em;
             transition: background 0.2s;
         }
 
@@ -428,16 +427,6 @@
             box-shadow: 0 4px 12px rgba(26, 95, 63, 0.3);
         }
 
-        .property-card.opportunity-zone {
-            border-left: 4px solid #1abc9c !important;
-        }
-
-        .property-card.opportunity-zone.selected {
-            border: 3px solid #1a5f3f;
-            border-left: 4px solid #1abc9c !important;
-            box-shadow: 0 4px 12px rgba(26, 95, 63, 0.3);
-        }
-
         .map-legend {
             background: white;
             padding: 10px;
@@ -477,13 +466,6 @@
         }
 
         .flood-risk-icon {
-            background: transparent;
-            border: none;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-            pointer-events: none; /* Allow clicks to pass through to underlying marker */
-        }
-
-        .opportunity-zone-icon {
             background: transparent;
             border: none;
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
@@ -1207,16 +1189,6 @@
             });
         }
 
-        // Check if a property is in an opportunity zone
-        function isPropertyInOpportunityZone(prop) {
-            // Check for any truthy value (true, 1, 'true', 'yes', etc.) but exclude null, undefined, false, 0, ''
-            return prop.opportunity_zone !== null && 
-                   prop.opportunity_zone !== undefined && 
-                   prop.opportunity_zone !== false && 
-                   prop.opportunity_zone !== 0 && 
-                   prop.opportunity_zone !== '';
-        }
-
         // Filter properties by selected geographic area (inclusion or exclusion based on area type)
         function filterByGeographicArea(area) {
             selectedGeographicArea = area;
@@ -1507,7 +1479,7 @@
                 ${propertyLegend}
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
-                    <span>~ ~ Flood Risk Property</span>
+                    <span>🌊 Flood Risk Property</span>
                 </div>
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #ffc107; border-color: #333;"></div>
@@ -1656,100 +1628,24 @@
                 const grade = school.grade || '';
                 const colors = getSchoolColorByGrade(grade);
                 
-                // Create a custom circle icon for the school marker
-                const circleIcon = L.divIcon({
-                    className: 'school-marker-icon',
-                    html: `<div style="width: 16px; height: 16px; border-radius: 50%; background-color: ${colors.fill}; border: 2px solid ${colors.stroke}; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-                    iconSize: [16, 16],
-                    iconAnchor: [8, 8]
+                // Create school marker (slightly larger than property markers)
+                const marker = L.circleMarker([school.latitude, school.longitude], {
+                    radius: 8,
+                    fillColor: colors.fill,
+                    color: colors.stroke,
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
                 });
                 
-                // Create school marker using L.marker (which supports dragging) with custom circle icon
-                // Make it draggable but disable dragging initially
-                const marker = L.marker([school.latitude, school.longitude], {
-                    icon: circleIcon,
-                    draggable: true // Make draggable but we'll disable it after adding to map
-                });
-                
-                // Store school data and ID on marker for later reference
-                marker.schoolData = school;
-                marker.schoolId = schoolId;
-                
-                // Store original coordinates (use existing original_latitude/original_longitude if available, otherwise use current coordinates)
-                if (!school.original_latitude || !school.original_longitude) {
-                    school.original_latitude = school.latitude;
-                    school.original_longitude = school.longitude;
-                }
-                marker.originalLat = school.original_latitude;
-                marker.originalLng = school.original_longitude;
-                
-                // Function to update popup content
-                const updatePopupContent = (forceShowNewCoords = false) => {
-                    const currentLatLng = marker.getLatLng();
-                    const currentLat = currentLatLng.lat;
-                    const currentLng = currentLatLng.lng;
-                    
-                    // Check if marker has been moved from original position (with small tolerance for floating point)
-                    const latDiff = Math.abs(currentLat - marker.originalLat);
-                    const lngDiff = Math.abs(currentLng - marker.originalLng);
-                    const hasBeenMoved = latDiff > 0.000001 || lngDiff > 0.000001;
-                    
-                    const isDraggingEnabled = marker.dragging && marker.dragging.enabled();
-                    const shouldShowNewCoords = forceShowNewCoords || (hasBeenMoved && !isDraggingEnabled);
-                    
-                    const coordsDisplay = shouldShowNewCoords && hasBeenMoved
-                        ? `<br><strong style="color: #28a745;">Current Coordinates:</strong><br>Lat: ${currentLat.toFixed(6)}<br>Lng: ${currentLng.toFixed(6)}`
-                        : '';
-                    const correctButtonText = isDraggingEnabled ? 'Stop Correcting' : 'Correct Location';
-                    const buttonColor = isDraggingEnabled ? '#dc3545' : '#17a2b8';
-                    
-                    return `
-                        <strong>${school.name || 'Unknown School'}</strong><br>
-                        Level: ${school.level || 'N/A'}<br>
-                        Grade: ${grade || 'N/A'}<br>
-                        ${school.street ? `${school.street}, ` : ''}${school.city || ''}, ${school.state || ''} ${school.zipcode || ''}<br>
-                        <strong>Original Coordinates:</strong><br>Lat: ${marker.originalLat.toFixed(6)}<br>Lng: ${marker.originalLng.toFixed(6)}
-                        ${coordsDisplay}
-                        <br><br>
-                        <button id="correctSchoolBtn_${schoolId}" 
-                                onclick="window.enableSchoolCorrection(${schoolId})" 
-                                style="padding: 5px 10px; background: ${buttonColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
-                            ${correctButtonText}
-                        </button>
-                    `;
-                };
-                
-                const popup = L.popup().setContent(updatePopupContent());
+                const popup = L.popup().setContent(`
+                    <strong>${school.name || 'Unknown School'}</strong><br>
+                    Level: ${school.level || 'N/A'}<br>
+                    Grade: ${grade || 'N/A'}<br>
+                    ${school.street ? `${school.street}, ` : ''}${school.city || ''}, ${school.state || ''} ${school.zipcode || ''}
+                `);
                 
                 marker.bindPopup(popup);
-                
-                // Store update function on marker for reuse
-                marker.updatePopupContent = updatePopupContent;
-                
-                // Handle dragend event to update school data with new coordinates
-                marker.on('dragend', function() {
-                    const newLatLng = marker.getLatLng();
-                    const newLat = newLatLng.lat;
-                    const newLng = newLatLng.lng;
-                    
-                    // Update school data with new coordinates (this updates the original location)
-                    school.latitude = newLat;
-                    school.longitude = newLng;
-                    // Keep original coordinates unchanged
-                    school.original_latitude = marker.originalLat;
-                    school.original_longitude = marker.originalLng;
-                    
-                    // Update the marker's stored original coordinates reference (in case it changed)
-                    marker.originalLat = school.original_latitude;
-                    marker.originalLng = school.original_longitude;
-                    
-                    // Update popup to show the correction
-                    const updatedContent = marker.updatePopupContent(true);
-                    marker.getPopup().setContent(updatedContent);
-                    marker.openPopup();
-                    
-                    console.log(`Updated school ${schoolId} (${school.name}): lat=${newLat.toFixed(6)}, lng=${newLng.toFixed(6)}`);
-                });
                 
                 // Add tooltip if there are fewer than 100 properties
                 if (shouldShowTooltips) {
@@ -1769,15 +1665,6 @@
                 }
                 
                 marker.addTo(map);
-                
-                // Disable dragging after marker is added to map (dragging handler is now available)
-                // Use setTimeout to ensure the dragging handler is fully initialized
-                setTimeout(() => {
-                    if (marker.dragging && marker.dragging.enabled()) {
-                        marker.dragging.disable();
-                    }
-                }, 50);
-                
                 schoolMarkers.push(marker);
             });
             
@@ -1833,79 +1720,6 @@
             if (map && currentCenter && currentZoom !== null) {
                 map.setView(currentCenter, currentZoom);
             }
-        };
-
-        // Enable/disable school marker correction (dragging)
-        window.enableSchoolCorrection = function(schoolId) {
-            // Find the marker for this school
-            const marker = schoolMarkers.find(m => m.schoolId === schoolId);
-            if (!marker || !marker.updatePopupContent) return;
-            
-            const school = marker.schoolData;
-            
-            // Helper function to toggle dragging state
-            const toggleDraggingState = (marker, school, isCurrentlyDraggable) => {
-                const grade = school.grade || '';
-                const colors = getSchoolColorByGrade(grade);
-                
-                // Toggle draggable state
-                if (isCurrentlyDraggable) {
-                    // Disable dragging - update icon to normal style
-                    marker.dragging.disable();
-                    const normalIcon = L.divIcon({
-                        className: 'school-marker-icon',
-                        html: `<div style="width: 16px; height: 16px; border-radius: 50%; background-color: ${colors.fill}; border: 2px solid ${colors.stroke}; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-                        iconSize: [16, 16],
-                        iconAnchor: [8, 8]
-                    });
-                    marker.setIcon(normalIcon);
-                } else {
-                    // Enable dragging - update icon to indicate dragging is enabled (slightly larger, thicker border)
-                    marker.dragging.enable();
-                    const draggingIcon = L.divIcon({
-                        className: 'school-marker-icon',
-                        html: `<div style="width: 18px; height: 18px; border-radius: 50%; background-color: ${colors.fill}; border: 3px solid ${colors.stroke}; box-shadow: 0 2px 6px rgba(0,0,0,0.4); opacity: 0.9;"></div>`,
-                        iconSize: [18, 18],
-                        iconAnchor: [9, 9]
-                    });
-                    marker.setIcon(draggingIcon);
-                }
-                
-                // Update popup content
-                let updatedContent = marker.updatePopupContent();
-                if (!isCurrentlyDraggable) {
-                    // If enabling, add instruction message
-                    updatedContent += '<br><em style="color: #17a2b8; font-size: 0.9em;">Drag the marker to correct its location</em>';
-                }
-                
-                marker.getPopup().setContent(updatedContent);
-                marker.openPopup();
-            };
-            
-            // Check if dragging handler exists
-            // For L.marker, dragging should be available when draggable: true
-            // If not available immediately, wait a bit for initialization
-            if (!marker.dragging) {
-                // Wait for dragging handler to be available (marker might still be initializing)
-                const checkDragging = (attempts = 0) => {
-                    if (marker.dragging) {
-                        // Now proceed with the toggle
-                        const isCurrentlyDraggable = marker.dragging.enabled();
-                        toggleDraggingState(marker, school, isCurrentlyDraggable);
-                    } else if (attempts < 5) {
-                        // Try again after a short delay (max 5 attempts)
-                        setTimeout(() => checkDragging(attempts + 1), 50);
-                    } else {
-                        console.warn('Dragging handler not available for marker', schoolId, 'after multiple attempts');
-                    }
-                };
-                checkDragging();
-                return;
-            }
-            
-            // If dragging is available, proceed directly
-            const isCurrentlyDraggable = marker.dragging.enabled();
-            toggleDraggingState(marker, school, isCurrentlyDraggable);
         };
 
         // Calculate value ranges for gradient visualizations
@@ -2254,7 +2068,6 @@
                 const isSelected = selectedProperties.has(mlsNum);
                 const isFiltered = isFilteredProp;
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
-                const isOpportunityZone = isPropertyInOpportunityZone(prop);
                 
                 // Get color based on visualization mode
                 const colors = getPropertyColor(prop, isSelected, isInFloodRisk);
@@ -2280,16 +2093,6 @@
                         opacity: isFiltered ? 1 : 0.7,
                         fillOpacity: isFiltered ? 0.9 : 0.6
                     };
-                } else if (isOpportunityZone) {
-                    // Opportunity zone properties get teal/green color
-                    markerOptions = {
-                        radius: 7,
-                        fillColor: '#1abc9c',
-                        color: '#16a085',
-                        weight: 3,
-                        opacity: isFiltered ? 1 : 0.7,
-                        fillOpacity: isFiltered ? 0.9 : 0.6
-                    };
                 } else {
                     markerOptions = {
                         radius: 6,
@@ -2308,7 +2111,7 @@
                     // Create a custom div icon with crashing wave emoji
                     const waterIcon = L.divIcon({
                         className: 'flood-risk-icon',
-                        html: '<div style="font-size: 20px; text-align: center; line-height: 1; pointer-events: none; font-weight: bold;">~ ~</div>',
+                        html: '<div style="font-size: 16px; text-align: center; line-height: 1; pointer-events: none;">🌊</div>',
                         iconSize: [20, 20],
                         iconAnchor: [10, 10]
                     });
@@ -2323,66 +2126,34 @@
                     propertyMarkers.push(waterMarker);
                 }
                 
-                // Add opportunity zone icon for opportunity zone properties
-                if (isOpportunityZone && !isSelected) {
-                    // Create a custom div icon with chart emoji
-                    const ozIcon = L.divIcon({
-                        className: 'opportunity-zone-icon',
-                        html: '<div style="font-size: 18px; text-align: center; line-height: 1; pointer-events: none; font-weight: bold;">📈</div>',
-                        iconSize: [20, 20],
-                        iconAnchor: [10, 10]
-                    });
-                    
-                    // Add the opportunity zone icon as an additional marker
-                    const ozMarker = L.marker([prop.latitude, prop.longitude], {
-                        icon: ozIcon,
-                        zIndexOffset: 1000, // Make sure it appears on top
-                        interactive: true // Make marker interactive to show tooltip
-                    });
-                    
-                    // Add tooltip showing the zone ID
-                    const zoneId = prop.opportunity_zone || 'Unknown';
-                    const tooltipContent = `
-                        <div style="font-weight: bold; color: #1abc9c;">
-                            📈 Opportunity Zone
-                        </div>
-                        <div style="color: #666; font-size: 11px; margin-top: 2px;">
-                            Zone ID: ${zoneId}
-                        </div>
-                    `;
-                    ozMarker.bindTooltip(tooltipContent, {
-                        permanent: false,
-                        direction: 'top',
-                        className: 'property-tooltip',
-                        offset: [0, -10]
-                    });
-                    
-                    ozMarker.addTo(map);
-                    propertyMarkers.push(ozMarker);
-                }
-                
                 // Build address on 2 lines: Street on line 1, City State zipcode on line 2
+                // Filter out Houston and TX (they're obvious)
                 const streetAddress = (prop.street_number && prop.street) 
                     ? `${prop.street_number} ${prop.street}` 
                     : '';
                 
-                // Get city and state
+                // Get city and state, normalize for comparison
                 const cityRaw = String(prop.city || '').trim();
                 const stateRaw = String(prop.state || '').trim();
+                const cityNormalized = cityRaw.toLowerCase().replace(/\s+/g, '');
+                const stateNormalized = stateRaw.toUpperCase().replace(/\s+/g, '');
                 
-                // Build second line (city, state zipcode) - comma after city, not after state
+                // Check if it's Houston or TX
+                const isHouston = cityNormalized === 'houston';
+                const isTX = stateNormalized === 'TX' || stateNormalized === 'TEXAS';
+                
+                // Build second line (city, state, zipcode) - exclude Houston and TX
                 let secondLineParts = [];
-                if (cityRaw && stateRaw) {
-                    secondLineParts.push(`${cityRaw}, ${stateRaw}`);
-                } else if (cityRaw) {
+                if (cityRaw && !isHouston) {
                     secondLineParts.push(cityRaw);
-                } else if (stateRaw) {
+                }
+                if (stateRaw && !isTX) {
                     secondLineParts.push(stateRaw);
                 }
                 if (prop.zipcode) {
                     secondLineParts.push(String(prop.zipcode));
                 }
-                const secondLine = secondLineParts.join(' ');
+                const secondLine = secondLineParts.join(', ');
                 
                 // Build address with 2 separate spans
                 let addressHtml = '';
@@ -2399,8 +2170,7 @@
                     ${address}<br>
                     ${prop.beds ? `${prop.beds} bed` : ''} ${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}<br>
                     ${prop.nearest_fault_meters ? `Nearest fault: ${(prop.nearest_fault_meters / 1000).toFixed(2)} km` : ''}
-                    ${isInFloodRisk ? '<br><span style="color: #e74c3c; font-weight: bold;">~ ~ High Flood Risk Area</span>' : ''}
-                    ${isOpportunityZone ? '<br><span style="color: #1abc9c; font-weight: bold;">📈 Opportunity Zone</span>' : ''}
+                    ${isInFloodRisk ? '<br><span style="color: #e74c3c; font-weight: bold;">⚠️ High Flood Risk Area</span>' : ''}
                     ${!isFiltered ? '<br><em style="color: #666;">(Filtered out)</em>' : ''}
                     <br><button onclick="window.togglePropertySelection(${mlsNum}); map.closePopup();" style="margin-top: 5px; padding: 5px 10px; cursor: pointer;">${isSelected ? 'Deselect' : 'Select'}</button>
                 `);
@@ -2845,7 +2615,7 @@
 
                 // Opportunity zone filter
                 if (opportunityZoneFilter) {
-                    if (!isPropertyInOpportunityZone(prop)) {
+                    if (!prop.opportunity_zone || prop.opportunity_zone === null || prop.opportunity_zone === '') {
                         return false;
                     }
                 }
@@ -3019,27 +2789,33 @@
 
             container.innerHTML = filteredProperties.map(prop => {
                 // Build address on 2 lines: Street on line 1, City State zipcode on line 2
+                // Filter out Houston and TX (they're obvious)
                 const streetAddress = (prop.street_number && prop.street) 
                     ? `${prop.street_number} ${prop.street}` 
                     : '';
                 
-                // Get city and state
+                // Get city and state, normalize for comparison
                 const cityRaw = String(prop.city || '').trim();
                 const stateRaw = String(prop.state || '').trim();
+                const cityNormalized = cityRaw.toLowerCase().replace(/\s+/g, '');
+                const stateNormalized = stateRaw.toUpperCase().replace(/\s+/g, '');
                 
-                // Build second line (city, state zipcode) - comma after city, not after state
+                // Check if it's Houston or TX
+                const isHouston = cityNormalized === 'houston';
+                const isTX = stateNormalized === 'TX' || stateNormalized === 'TEXAS';
+                
+                // Build second line (city, state, zipcode) - exclude Houston and TX
                 let secondLineParts = [];
-                if (cityRaw && stateRaw) {
-                    secondLineParts.push(`${cityRaw}, ${stateRaw}`);
-                } else if (cityRaw) {
+                if (cityRaw && !isHouston) {
                     secondLineParts.push(cityRaw);
-                } else if (stateRaw) {
+                }
+                if (stateRaw && !isTX) {
                     secondLineParts.push(stateRaw);
                 }
                 if (prop.zipcode) {
                     secondLineParts.push(String(prop.zipcode));
                 }
-                const secondLine = secondLineParts.join(' ');
+                const secondLine = secondLineParts.join(', ');
                 
                 // Build address with 2 separate spans
                 let addressHtml = '';
@@ -3061,7 +2837,6 @@
 
                 const isSelected = selectedProperties.has(prop.mls_number);
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
-                const isOpportunityZone = isPropertyInOpportunityZone(prop);
                 
                 // Calculate days on market from listing_date
                 let daysOnMarket = null;
@@ -3077,17 +2852,15 @@
                 }
 
                 return `
-                    <div class="property-card ${isSelected ? 'selected' : ''} ${isOpportunityZone ? 'opportunity-zone' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
+                    <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
                         <div class="property-image">
                             ${imageHtml}
-                            ${isOpportunityZone ? `<div style="position: absolute; top: 10px; left: 10px; background: rgba(26, 188, 156, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2; z-index: 15;" title="Opportunity Zone ID: ${prop.opportunity_zone || 'Unknown'}">📈 OZ</div>` : ''}
-                            ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2; z-index: 15;">~ ~</div>' : ''}
+                            ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 18px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">🌊</div>' : ''}
                         </div>
                         <div class="property-content">
                             <div class="property-price">
                                 $${prop.price ? prop.price.toLocaleString() : 'N/A'}${(prop.price && prop.sqft && prop.sqft > 0) ? ` <span style="font-size: 0.6em; color: #666;">($${Math.round(prop.price / prop.sqft).toLocaleString()}/sqft)</span>` : ''}
-                                ${isInFloodRisk ? ' <span style="color: #e74c3c; font-size: 0.8em; margin-left: 8px; display: inline-block;" title="High Flood Risk Area">~ ~</span>' : ''}
-                                ${isOpportunityZone ? ' <span style="color: #1abc9c; font-size: 0.8em; margin-left: 8px;" title="Opportunity Zone">📈</span>' : ''}
+                                ${isInFloodRisk ? ' <span style="color: #e74c3c; font-size: 0.8em; margin-left: 8px;" title="High Flood Risk Area">🌊</span>' : ''}
                             </div>
                             <div class="property-address">${address}</div>
                             <div class="property-details">
@@ -3096,13 +2869,15 @@
                                 ${prop.sqft ? `<div class="property-detail-item"><strong>Sqft:</strong> ${prop.sqft.toLocaleString()}</div>` : ''}
                                 ${prop.lot_size_sqft ? `<div class="property-detail-item"><strong>Lot:</strong> ${prop.lot_size_sqft.toLocaleString()} sqft</div>` : ''}
                                 ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
-                                ${daysOnMarket !== null ? `<div class="property-detail-item"><strong>Days:</strong> ${daysOnMarket}</div>` : ''}
+                                ${daysOnMarket !== null ? `<div class="property-detail-item"><strong>Days on Market:</strong> ${daysOnMarket}</div>` : ''}
                             </div>
                             ${prop.property_type ? `<span class="property-type">${prop.property_type}</span>` : ''}
-                            <div class="property-maintenance">
-                                <strong>Monthly Maintenance:</strong> $${(prop.monthly_maintenance_fee !== null && prop.monthly_maintenance_fee !== undefined ? prop.monthly_maintenance_fee : 0).toLocaleString()}
-                            </div>
-                            <div style="margin-top: 15px; display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center;">
+                            ${prop.monthly_maintenance_fee ? `
+                                <div class="property-maintenance">
+                                    <strong>Monthly Maintenance:</strong> $${prop.monthly_maintenance_fee.toLocaleString()}
+                                </div>
+                            ` : ''}
+                            <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
                                 ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link" onclick="event.stopPropagation()">View on HAR.com</a>` : ''}
                                 ${prop.latitude && prop.longitude ? `<a href="https://msc.fema.gov/portal/firmette?latitude=${prop.latitude}&longitude=${prop.longitude}" target="_blank" class="property-link" style="background: #0066cc;" onclick="event.stopPropagation()">FEMA Flood Map</a>` : ''}
                             </div>

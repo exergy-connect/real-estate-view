@@ -86,6 +86,24 @@ The worker implements a three-tier caching system for optimal performance:
   - Returns "Kernel Online" status
   - Does not load cached data (lightweight)
 
+- **`/api/github/pr`**: Create a GitHub Pull Request (POST only)
+  - Requires `GH_TOKEN` environment variable in Cloudflare Worker
+  - Creates a new branch, updates a file, and opens a PR
+  - Request body:
+    ```json
+    {
+      "repository": "exergy-connect/real-estate-view",
+      "file_path": "data/update.json",
+      "file_content": { "status": "updated", "timestamp": "2024-01-01T00:00:00Z" },
+      "commit_message": "Automated update",
+      "pr_title": "Update data",
+      "pr_body": "Description of changes",
+      "branch_name": "update-zone-1234567890"
+    }
+    ```
+  - Returns PR URL and number on success
+  - See `test_github_pr.py` for example usage
+
 ### Data Loading Patterns
 
 - **Full Dataset**: Handlers receive a `loadCachedData()` function handle that they can call when needed. This ensures data is only loaded for handlers that actually need it.

@@ -80,8 +80,10 @@ export const createSmartFetcher = (env: any, url: string): EntityFetcher => {
     if (oldEtag) headers['If-None-Match'] = oldEtag;
 
     // Use env.ASSETS if available (Cloudflare Pages), otherwise global fetch
-    const fetcher = env.ASSETS?.fetch || fetch;
-    const response = await fetcher(new Request(url, { headers }));
+    // Call directly to preserve 'this' binding for env.ASSETS.fetch
+    const response = env.ASSETS?.fetch 
+      ? await env.ASSETS.fetch(new Request(url, { headers }))
+      : await fetch(new Request(url, { headers }));
 
     // 1. Handle 304 (Not Modified) - Zero CPU/Network Waste
     if (response.status === 304) {
