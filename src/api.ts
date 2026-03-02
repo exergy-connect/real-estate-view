@@ -1,17 +1,19 @@
+import { getCachedJSON, CacheStatus, createSmartFetcher } from './cache';
+
 // Define a simple type for our handlers
 type LoadCachedDataFn = () => Promise<any>;
-type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn, startTime?: number) => Promise<Response>;
+type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn, startTime?: number, ctx?: any) => Promise<Response>;
 
 /**
  * Creates Server-Timing header value from performance metrics
  */
-function createServerTimingHeader(ioMs: number, cpuMs: number, cacheCode?: number): string {
+function createServerTimingHeader(ioMs: number, cpuMs: number, cacheStatus?: CacheStatus): string {
   const metrics = [
     `io;dur=${ioMs.toFixed(2)}`,
     `cpu;dur=${cpuMs.toFixed(2)}`
   ];
-  if (cacheCode !== undefined) {
-    metrics.push(`cache;desc=${cacheCode}`);
+  if (cacheStatus !== undefined) {
+    metrics.push(`cache;desc=${cacheStatus}`);
   }
   return metrics.join(', ');
 }
@@ -31,12 +33,28 @@ function getCorsHeaders(): Record<string, string> {
 /**
  * Creates response headers with Server-Timing and CORS
  */
-function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number, cacheCode?: number): Record<string, string> {
+function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number, cacheStatus?: CacheStatus): Record<string, string> {
   return {
     'Content-Type': contentType,
-    'Server-Timing': createServerTimingHeader(ioMs, cpuMs, cacheCode),
+    'Server-Timing': createServerTimingHeader(ioMs, cpuMs, cacheStatus),
     ...getCorsHeaders()
   };
+}
+
+/**
+ * Creates a JSON error response with the specified status code
+ */
+function createErrorResponse(error: string, status: number, message?: string): Response {
+  return new Response(JSON.stringify({ 
+    error,
+    ...(message && { message })
+  }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders()
+    }
+  });
 }
 
 async function getEntity(request: Request, env: any, id: string): Promise<{ entity: any; ioMs: number; cpuMs: number }> {
@@ -61,10 +79,39 @@ async function getEntity(request: Request, env: any, id: string): Promise<{ enti
   return { entity, ioMs, cpuMs };
 }
 
+/**
+ * Loads model JSON using getCachedJSON
+ * Uses the new cache functions with ETag support and multi-layer caching
+ */
+async function loadCachedModel(
+  env: any,
+  ctx: any,
+  baseUrl: string
+): Promise<{ model: string; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
+  const cacheKey = "consolidated_model.json";
+  const ttl_ms = 3600 * 1000; // 1 hour in milliseconds
+  const assetUrl = new URL("output/consolidated_model.json", baseUrl).toString();
+  
+  // Create a smart fetcher that handles ETag revalidation and Gzip decompression
+  const fetcher = createSmartFetcher(env, assetUrl);
+  
+  const ioStart = performance.now();
+  const result = await getCachedJSON(env, ctx, cacheKey, ttl_ms, fetcher, false); // Don't parse JSON
+  const ioMs = performance.now() - ioStart;
+  
+  return {
+    model: result.data as string,
+    ioMs,
+    cpuMs: 0, // No CPU time needed for formatting
+    cacheStatus: result.cacheStatus
+  };
+}
+
+
 export const apiRoutes: Record<string, Handler> = {
   "/api": async (req, env, loadCachedData, startTime) => {
     const ioStart = startTime || performance.now();
-    const { data: cachedData, cacheCode } = await loadCachedData!();
+    const { data: cachedData, cacheStatus } = await loadCachedData!();
     const ioEnd = performance.now();
     const ioMs = ioEnd - ioStart;
     
@@ -72,14 +119,14 @@ export const apiRoutes: Record<string, Handler> = {
     const jsonString = JSON.stringify(cachedData);
     const cpuMs = performance.now() - ioEnd;
     
-    const headers = createResponseHeaders('application/json', ioMs, cpuMs, cacheCode);
-    headers['X-Cache-Code'] = cacheCode.toString();
+    const headers = createResponseHeaders('application/json', ioMs, cpuMs, cacheStatus);
+    headers['X-Cache-Status'] = cacheStatus;
     
     return new Response(jsonString, { headers });
   },
   "/api/compute": async (req, env, loadCachedData, startTime) => {
     const ioStart = startTime || performance.now();
-    const { data, cacheCode } = await loadCachedData!();
+    const { data, cacheStatus } = await loadCachedData!();
     const ioMs = performance.now() - ioStart;
     
     // Get request body if present (for POST/PUT requests)
@@ -130,8 +177,8 @@ export const apiRoutes: Record<string, Handler> = {
     
     const cpuMs = performance.now() - cpuStart;
     
-    const headers = createResponseHeaders('application/json', ioMs, cpuMs, cacheCode);
-    headers['X-Cache-Code'] = cacheCode.toString();
+    const headers = createResponseHeaders('application/json', ioMs, cpuMs, cacheStatus);
+    headers['X-Cache-Status'] = cacheStatus;
     
     return new Response(JSON.stringify(modifiedData), { headers });
   },
@@ -150,13 +197,7 @@ export const apiRoutes: Record<string, Handler> = {
     const id = url.searchParams.get("id");
     
     if (!id) {
-      return new Response(JSON.stringify({ error: "Missing 'id' parameter" }), {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getCorsHeaders()
-        }
-      });
+      return createErrorResponse("Missing 'id' parameter", 400);
     }
     
     try {
@@ -166,27 +207,16 @@ export const apiRoutes: Record<string, Handler> = {
         headers: createResponseHeaders('application/json', ioMs, cpuMs)
       });
     } catch (error) {
-      return new Response(JSON.stringify({ 
-        error: error instanceof Error ? error.message : "Entity not found" 
-      }), {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getCorsHeaders()
-        }
-      });
+      return createErrorResponse(
+        error instanceof Error ? error.message : "Entity not found",
+        404
+      );
     }
   },
   "/api/github/pr": async (req, env, loadCachedData, startTime) => {
     // Only allow POST requests
     if (req.method !== 'POST') {
-      return new Response(JSON.stringify({ error: 'Method not allowed. Use POST.' }), {
-        status: 405,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getCorsHeaders()
-        }
-      });
+      return createErrorResponse('Method not allowed. Use POST.', 405);
     }
 
     const cpuStart = performance.now();
@@ -197,16 +227,11 @@ export const apiRoutes: Record<string, Handler> = {
       
       const GITHUB_TOKEN = env.GH_TOKEN;
       if (!GITHUB_TOKEN) {
-        return new Response(JSON.stringify({ 
-          error: 'GITHUB_TOKEN not configured',
-          message: 'GH_TOKEN environment variable is required'
-        }), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          }
-        });
+        return createErrorResponse(
+          'GITHUB_TOKEN not configured',
+          500,
+          'GH_TOKEN environment variable is required'
+        );
       }
 
       const REPO = requestData.repository || "exergy-connect/real-estate-view";
@@ -366,13 +391,67 @@ export const apiRoutes: Record<string, Handler> = {
 
     } catch (error) {
       const cpuMs = performance.now() - cpuStart;
-      return new Response(JSON.stringify({
-        error: 'Failed to create GitHub PR',
-        message: error instanceof Error ? error.message : String(error)
-      }), {
-        status: 500,
-        headers: createResponseHeaders('application/json', 0, cpuMs)
-      });
+      return createErrorResponse(
+        'Failed to create GitHub PR',
+        500,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  },
+  "/api/mcp/sse": async (req, env, loadCachedData, startTime, ctx) => {
+    // Only allow POST requests for MCP tool calls
+    if (req.method !== 'POST') {
+      return createErrorResponse('Method not allowed. Use POST.', 405);
+    }
+    
+    try {
+      // Parse MCP tool call request
+      const requestData = await req.json();
+      const toolName = requestData.tool || requestData.name;
+      
+      if (!toolName) {
+        return createErrorResponse('Missing tool name', 400);
+      }
+
+      const { origin } = new URL(req.url);
+      const context = ctx || { waitUntil: (p: Promise<any>) => p };
+      
+      // Handle getModel tool
+      if (toolName === 'getModel') {
+        const { model, ioMs, cpuMs, cacheStatus } = await loadCachedModel(env, context, origin);
+        
+        const response = {
+          type: 'tool_response',
+          tool: 'getModel',
+          content: [
+            {
+              type: 'text',
+              text: model // model is already a JSON string, no need to stringify
+            }
+          ]
+        };
+        
+        return new Response(JSON.stringify(response), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Server-Timing': createServerTimingHeader(ioMs, cpuMs, cacheStatus),
+            ...getCorsHeaders()
+          }
+        });
+      } else {
+        // Unknown tool
+        return createErrorResponse(
+          `Unknown tool: ${toolName}`,
+          400,
+          `Available tools: getModel`
+        );
+      }
+    } catch (error) {
+      return createErrorResponse(
+        'Failed to process MCP tool call',
+        500,
+        error instanceof Error ? error.message : String(error)
+      );
     }
   }
 };
