@@ -2338,8 +2338,26 @@
                     const ozMarker = L.marker([prop.latitude, prop.longitude], {
                         icon: ozIcon,
                         zIndexOffset: 1000, // Make sure it appears on top
-                        interactive: false // Make marker non-interactive so clicks pass through
+                        interactive: true // Make marker interactive to show tooltip
                     });
+                    
+                    // Add tooltip showing the zone ID
+                    const zoneId = prop.opportunity_zone || 'Unknown';
+                    const tooltipContent = `
+                        <div style="font-weight: bold; color: #1abc9c;">
+                            📈 Opportunity Zone
+                        </div>
+                        <div style="color: #666; font-size: 11px; margin-top: 2px;">
+                            Zone ID: ${zoneId}
+                        </div>
+                    `;
+                    ozMarker.bindTooltip(tooltipContent, {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'property-tooltip',
+                        offset: [0, -10]
+                    });
+                    
                     ozMarker.addTo(map);
                     propertyMarkers.push(ozMarker);
                 }
@@ -3063,7 +3081,7 @@
                     <div class="property-card ${isSelected ? 'selected' : ''} ${isOpportunityZone ? 'opportunity-zone' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
                         <div class="property-image">
                             ${imageHtml}
-                            ${isOpportunityZone ? '<div style="position: absolute; top: 10px; left: 10px; background: rgba(26, 188, 156, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2; z-index: 15;">📈 OZ</div>' : ''}
+                            ${isOpportunityZone ? `<div style="position: absolute; top: 10px; left: 10px; background: rgba(26, 188, 156, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2; z-index: 15;" title="Opportunity Zone ID: ${prop.opportunity_zone || 'Unknown'}">📈 OZ</div>` : ''}
                             ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2; z-index: 15;">~ ~</div>' : ''}
                         </div>
                         <div class="property-content">
