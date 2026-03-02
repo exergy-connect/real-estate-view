@@ -1629,24 +1629,100 @@
                 const grade = school.grade || '';
                 const colors = getSchoolColorByGrade(grade);
                 
-                // Create school marker (slightly larger than property markers)
-                const marker = L.circleMarker([school.latitude, school.longitude], {
-                    radius: 8,
-                    fillColor: colors.fill,
-                    color: colors.stroke,
-                    weight: 2,
-                    opacity: 1,
-                    fillOpacity: 0.8
+                // Create a custom circle icon for the school marker
+                const circleIcon = L.divIcon({
+                    className: 'school-marker-icon',
+                    html: `<div style="width: 16px; height: 16px; border-radius: 50%; background-color: ${colors.fill}; border: 2px solid ${colors.stroke}; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
                 });
                 
-                const popup = L.popup().setContent(`
-                    <strong>${school.name || 'Unknown School'}</strong><br>
-                    Level: ${school.level || 'N/A'}<br>
-                    Grade: ${grade || 'N/A'}<br>
-                    ${school.street ? `${school.street}, ` : ''}${school.city || ''}, ${school.state || ''} ${school.zipcode || ''}
-                `);
+                // Create school marker using L.marker (which supports dragging) with custom circle icon
+                // Make it draggable but disable dragging initially
+                const marker = L.marker([school.latitude, school.longitude], {
+                    icon: circleIcon,
+                    draggable: true // Make draggable but we'll disable it after adding to map
+                });
+                
+                // Store school data and ID on marker for later reference
+                marker.schoolData = school;
+                marker.schoolId = schoolId;
+                
+                // Store original coordinates (use existing original_latitude/original_longitude if available, otherwise use current coordinates)
+                if (!school.original_latitude || !school.original_longitude) {
+                    school.original_latitude = school.latitude;
+                    school.original_longitude = school.longitude;
+                }
+                marker.originalLat = school.original_latitude;
+                marker.originalLng = school.original_longitude;
+                
+                // Function to update popup content
+                const updatePopupContent = (forceShowNewCoords = false) => {
+                    const currentLatLng = marker.getLatLng();
+                    const currentLat = currentLatLng.lat;
+                    const currentLng = currentLatLng.lng;
+                    
+                    // Check if marker has been moved from original position (with small tolerance for floating point)
+                    const latDiff = Math.abs(currentLat - marker.originalLat);
+                    const lngDiff = Math.abs(currentLng - marker.originalLng);
+                    const hasBeenMoved = latDiff > 0.000001 || lngDiff > 0.000001;
+                    
+                    const isDraggingEnabled = marker.dragging && marker.dragging.enabled();
+                    const shouldShowNewCoords = forceShowNewCoords || (hasBeenMoved && !isDraggingEnabled);
+                    
+                    const coordsDisplay = shouldShowNewCoords && hasBeenMoved
+                        ? `<br><strong style="color: #28a745;">Current Coordinates:</strong><br>Lat: ${currentLat.toFixed(6)}<br>Lng: ${currentLng.toFixed(6)}`
+                        : '';
+                    const correctButtonText = isDraggingEnabled ? 'Stop Correcting' : 'Correct Location';
+                    const buttonColor = isDraggingEnabled ? '#dc3545' : '#17a2b8';
+                    
+                    return `
+                        <strong>${school.name || 'Unknown School'}</strong><br>
+                        Level: ${school.level || 'N/A'}<br>
+                        Grade: ${grade || 'N/A'}<br>
+                        ${school.street ? `${school.street}, ` : ''}${school.city || ''}, ${school.state || ''} ${school.zipcode || ''}<br>
+                        <strong>Original Coordinates:</strong><br>Lat: ${marker.originalLat.toFixed(6)}<br>Lng: ${marker.originalLng.toFixed(6)}
+                        ${coordsDisplay}
+                        <br><br>
+                        <button id="correctSchoolBtn_${schoolId}" 
+                                onclick="window.enableSchoolCorrection(${schoolId})" 
+                                style="padding: 5px 10px; background: ${buttonColor}; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            ${correctButtonText}
+                        </button>
+                    `;
+                };
+                
+                const popup = L.popup().setContent(updatePopupContent());
                 
                 marker.bindPopup(popup);
+                
+                // Store update function on marker for reuse
+                marker.updatePopupContent = updatePopupContent;
+                
+                // Handle dragend event to update school data with new coordinates
+                marker.on('dragend', function() {
+                    const newLatLng = marker.getLatLng();
+                    const newLat = newLatLng.lat;
+                    const newLng = newLatLng.lng;
+                    
+                    // Update school data with new coordinates (this updates the original location)
+                    school.latitude = newLat;
+                    school.longitude = newLng;
+                    // Keep original coordinates unchanged
+                    school.original_latitude = marker.originalLat;
+                    school.original_longitude = marker.originalLng;
+                    
+                    // Update the marker's stored original coordinates reference (in case it changed)
+                    marker.originalLat = school.original_latitude;
+                    marker.originalLng = school.original_longitude;
+                    
+                    // Update popup to show the correction
+                    const updatedContent = marker.updatePopupContent(true);
+                    marker.getPopup().setContent(updatedContent);
+                    marker.openPopup();
+                    
+                    console.log(`Updated school ${schoolId} (${school.name}): lat=${newLat.toFixed(6)}, lng=${newLng.toFixed(6)}`);
+                });
                 
                 // Add tooltip if there are fewer than 100 properties
                 if (shouldShowTooltips) {
@@ -1666,6 +1742,15 @@
                 }
                 
                 marker.addTo(map);
+                
+                // Disable dragging after marker is added to map (dragging handler is now available)
+                // Use setTimeout to ensure the dragging handler is fully initialized
+                setTimeout(() => {
+                    if (marker.dragging && marker.dragging.enabled()) {
+                        marker.dragging.disable();
+                    }
+                }, 50);
+                
                 schoolMarkers.push(marker);
             });
             
@@ -1721,6 +1806,79 @@
             if (map && currentCenter && currentZoom !== null) {
                 map.setView(currentCenter, currentZoom);
             }
+        };
+
+        // Enable/disable school marker correction (dragging)
+        window.enableSchoolCorrection = function(schoolId) {
+            // Find the marker for this school
+            const marker = schoolMarkers.find(m => m.schoolId === schoolId);
+            if (!marker || !marker.updatePopupContent) return;
+            
+            const school = marker.schoolData;
+            
+            // Helper function to toggle dragging state
+            const toggleDraggingState = (marker, school, isCurrentlyDraggable) => {
+                const grade = school.grade || '';
+                const colors = getSchoolColorByGrade(grade);
+                
+                // Toggle draggable state
+                if (isCurrentlyDraggable) {
+                    // Disable dragging - update icon to normal style
+                    marker.dragging.disable();
+                    const normalIcon = L.divIcon({
+                        className: 'school-marker-icon',
+                        html: `<div style="width: 16px; height: 16px; border-radius: 50%; background-color: ${colors.fill}; border: 2px solid ${colors.stroke}; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    marker.setIcon(normalIcon);
+                } else {
+                    // Enable dragging - update icon to indicate dragging is enabled (slightly larger, thicker border)
+                    marker.dragging.enable();
+                    const draggingIcon = L.divIcon({
+                        className: 'school-marker-icon',
+                        html: `<div style="width: 18px; height: 18px; border-radius: 50%; background-color: ${colors.fill}; border: 3px solid ${colors.stroke}; box-shadow: 0 2px 6px rgba(0,0,0,0.4); opacity: 0.9;"></div>`,
+                        iconSize: [18, 18],
+                        iconAnchor: [9, 9]
+                    });
+                    marker.setIcon(draggingIcon);
+                }
+                
+                // Update popup content
+                let updatedContent = marker.updatePopupContent();
+                if (!isCurrentlyDraggable) {
+                    // If enabling, add instruction message
+                    updatedContent += '<br><em style="color: #17a2b8; font-size: 0.9em;">Drag the marker to correct its location</em>';
+                }
+                
+                marker.getPopup().setContent(updatedContent);
+                marker.openPopup();
+            };
+            
+            // Check if dragging handler exists
+            // For L.marker, dragging should be available when draggable: true
+            // If not available immediately, wait a bit for initialization
+            if (!marker.dragging) {
+                // Wait for dragging handler to be available (marker might still be initializing)
+                const checkDragging = (attempts = 0) => {
+                    if (marker.dragging) {
+                        // Now proceed with the toggle
+                        const isCurrentlyDraggable = marker.dragging.enabled();
+                        toggleDraggingState(marker, school, isCurrentlyDraggable);
+                    } else if (attempts < 5) {
+                        // Try again after a short delay (max 5 attempts)
+                        setTimeout(() => checkDragging(attempts + 1), 50);
+                    } else {
+                        console.warn('Dragging handler not available for marker', schoolId, 'after multiple attempts');
+                    }
+                };
+                checkDragging();
+                return;
+            }
+            
+            // If dragging is available, proceed directly
+            const isCurrentlyDraggable = marker.dragging.enabled();
+            toggleDraggingState(marker, school, isCurrentlyDraggable);
         };
 
         // Calculate value ranges for gradient visualizations
