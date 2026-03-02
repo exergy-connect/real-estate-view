@@ -750,7 +750,8 @@
             'flood_risk': true,
             'school_zone': true,
             'school_zone_sub_division': true,
-            'investment_zone': true
+            'investment_zone': true,
+            'opportunity_zone': true
         };
         let lastToggledAreaType = null; // Track which area type was last toggled
         let toggleState = 0; // 0 = normal, 1 = only this type visible, 2 = all visible
@@ -772,6 +773,11 @@
                 
                 const data = await getConsolidatedData();
                 
+                // Update last refreshed timestamp from consolidated data
+                if (data.timestamp) {
+                    updateLastRefreshed(data.timestamp);
+                }
+                
                 // Load fault data
                 loadFaultData(data);
                 
@@ -781,29 +787,46 @@
                 // Load school data
                 loadSchoolData(data);
                 
-                // Extract properties from the nested structure
-                const properties = Object.values(data.data.property || {});
+                // Extract properties from both top-level and nested structures
+                // Top-level properties (those without valid zipcodes)
+                const topLevelProperties = Object.values(data.data.property || {});
+                
+                // Nested properties (state -> cities -> zipcodes -> properties)
+                const nestedProperties = [];
+                if (data.data.state && data.data.state.TX && data.data.state.TX.cities) {
+                    for (const city of data.data.state.TX.cities) {
+                        if (city.zipcodes) {
+                            for (const zipcode of city.zipcodes) {
+                                if (zipcode.properties) {
+                                    nestedProperties.push(...zipcode.properties);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Combine all properties
+                const properties = [...topLevelProperties, ...nestedProperties];
+                
                 allProperties = properties.map(prop => {
-                const location = prop.location?.[0] || {};
                 const address = prop.address?.[0] || {};
                 const detail = prop.detail?.[0] || {};
                 const media = prop.media?.[0] || {};
-                const maintenance = prop.maintenance?.[0] || {};
-                const pricing = prop.pricing?.[0] || {};
+                const economics = prop.economics?.[0] || {};
                 const geolocation = prop.geolocation?.[0] || {};
                 const metadata = prop.metadata?.[0] || {};
                     
                     return {
                         mls_number: prop.mls_number,
-                        price: pricing.price || 0,
+                        price: economics.price || 0,
                         url: prop.url || '',
                         status: prop.status || '',
                         listing_date: prop.listing_date || '',
                         description: prop.description || '',
-                        city: location.city || '',
-                        state: location.state || '',
-                        zipcode: location.zipcode || null,
-                        county: location.county || '',
+                        city: address.city || '',
+                        state: address.state || '',
+                        zipcode: prop.zipcode ?? address.zipcode ?? null,
+                        county: address.county || '',
                         street_number: address.street_number || null,
                         street: address.street || '',
                         property_type: detail.property_type || '',
@@ -814,9 +837,9 @@
                         lot_size_sqft: detail.lot_size_sqft || null,
                         year_built: detail.year_built || null,
                         images: media.images || [],
-                        monthly_maintenance_fee: maintenance.monthly_maintenance_fee || null,
-                        latitude: geolocation?.latitude ?? location.latitude ?? null,
-                        longitude: geolocation?.longitude ?? location.longitude ?? null,
+                        monthly_maintenance_fee: economics.monthly_maintenance_fee || null,
+                        latitude: geolocation?.latitude ?? null,
+                        longitude: geolocation?.longitude ?? null,
                         nearest_fault_meters: geolocation?.nearest_fault_meters ?? null,
                         nearest_fault_id: geolocation?.nearest_fault_id ?? null,
                         extracted_at: metadata.extracted_at || null,
@@ -1062,7 +1085,8 @@
             'flood_risk': { fill: '#e67e22', stroke: '#d35400', opacity: 0.6 },
             'school_zone': { fill: '#16a085', stroke: '#138d75', opacity: 0.4 },
             'school_zone_sub_division': { fill: '#f1c40f', stroke: '#f39c12', opacity: 0.5 },
-            'investment_zone': { fill: '#9b59b6', stroke: '#8e44ad', opacity: 0.5 }
+            'investment_zone': { fill: '#9b59b6', stroke: '#8e44ad', opacity: 0.5 },
+            'opportunity_zone': { fill: '#1abc9c', stroke: '#16a085', opacity: 0.5 }
         };
 
         // Create rectangle from bounds
@@ -1432,6 +1456,12 @@
                      title="Click to show/hide Investment Zones">
                     <div class="map-legend-color" style="background: #9b59b6; border: 2px solid #8e44ad;"></div>
                     <span>Investment Zone</span>
+                </div>
+                <div class="map-legend-item ${!visibleAreaTypes.opportunity_zone ? 'hidden' : ''}" 
+                     onclick="toggleAreaTypeVisibility('opportunity_zone')" 
+                     title="Click to show/hide Opportunity Zones">
+                    <div class="map-legend-color" style="background: #1abc9c; border: 2px solid #16a085;"></div>
+                    <span>Opportunity Zone</span>
                 </div>
                 ` : ''}
                 ${propertyLegend}
@@ -1980,8 +2010,6 @@
             filteredProperties.forEach(prop => {
                 if (prop.latitude && prop.longitude) {
                     propertiesToShow.set(prop.mls_number, { prop, isFiltered: true });
-                } else {
-                    console.log('Filtered property missing coordinates:', prop.mls_number, 'lat:', prop.latitude, 'lng:', prop.longitude);
                 }
             });
             
@@ -2832,24 +2860,33 @@
         // Load data on page load
         loadData();
 
-        // Set last refreshed date
-        function updateLastRefreshed() {
-            const now = new Date();
+        // Set last refreshed date from consolidated data timestamp
+        function updateLastRefreshed(timestamp) {
+            let date;
+            if (timestamp) {
+                // Parse the timestamp from consolidated_data.json
+                date = new Date(timestamp);
+            } else {
+                // Fallback to current date if no timestamp provided
+                date = new Date();
+            }
+            
             const options = { 
                 year: 'numeric', 
                 month: 'short', 
                 day: 'numeric',
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                timeZoneName: 'short'
             };
-            const dateStr = now.toLocaleDateString('en-US', options);
+            const dateStr = date.toLocaleDateString('en-US', options);
             const lastRefreshedEl = document.getElementById('lastRefreshed');
             if (lastRefreshedEl) {
                 lastRefreshedEl.textContent = `Last refreshed: ${dateStr}`;
             }
         }
         
-        // Update on page load
+        // Update on page load (will be updated again when data loads)
         updateLastRefreshed();
     </script>
 </body>
