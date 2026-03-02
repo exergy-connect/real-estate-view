@@ -583,6 +583,13 @@
             </div>
 
             <div class="filter-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="opportunityZoneFilter" style="width: auto; margin: 0; cursor: pointer;">
+                    <span>Opportunity Zone only</span>
+                </label>
+            </div>
+
+            <div class="filter-group">
                 <label for="zipcodeFilter">Zipcode</label>
                 <select id="zipcodeFilter">
                     <option value="">All Zipcodes</option>
@@ -838,6 +845,7 @@
                         year_built: detail.year_built || null,
                         images: media.images || [],
                         monthly_maintenance_fee: economics.monthly_maintenance_fee || null,
+                        opportunity_zone: economics.opportunity_zone || null,
                         latitude: geolocation?.latitude ?? null,
                         longitude: geolocation?.longitude ?? null,
                         nearest_fault_meters: geolocation?.nearest_fault_meters ?? null,
@@ -847,6 +855,10 @@
                         property_schools: prop.property_schools?.[0] || null
                     };
                 });
+                
+                console.log(`Loaded ${allProperties.length} total properties (${topLevelProperties.length} top-level, ${nestedProperties.length} nested)`);
+                const propsWithCoords = allProperties.filter(p => p.latitude && p.longitude).length;
+                console.log(`Properties with coordinates: ${propsWithCoords}`);
                 
                 // Find the most recent extraction date (day only)
                 const extractionDates = allProperties
@@ -1726,13 +1738,16 @@
                 propertyValueRanges.sqft = { min: Math.min(...sqfts), max: Math.max(...sqfts) };
             }
             
-            // Days on market range (calculate from extracted_at_date)
+            // Days on market range (calculate from listing_date)
             const today = new Date();
+            today.setHours(0, 0, 0, 0);
             const daysOnMarket = allProperties
                 .map(p => {
-                    if (!p.extracted_at_date) return null;
-                    const extractedDate = new Date(p.extracted_at_date);
-                    const diffTime = today - extractedDate;
+                    if (!p.listing_date || p.listing_date === 'Just Listed') return null;
+                    const listingDate = new Date(p.listing_date);
+                    if (isNaN(listingDate.getTime())) return null;
+                    listingDate.setHours(0, 0, 0, 0);
+                    const diffTime = today - listingDate;
                     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                     return diffDays >= 0 ? diffDays : null;
                 })
@@ -1790,12 +1805,17 @@
                 return { fill: `rgb(${r}, ${g}, 0)`, stroke: '#fff' };
             } else if (mode === 'days_on_market') {
                 // Gradient by days on market (green = recent/new, red = old)
-                if (!propertyValueRanges.days_on_market || !prop.extracted_at_date) {
+                if (!propertyValueRanges.days_on_market || !prop.listing_date || prop.listing_date === 'Just Listed') {
                     return { fill: '#6c757d', stroke: '#fff' };
                 }
                 const today = new Date();
-                const extractedDate = new Date(prop.extracted_at_date);
-                const diffTime = today - extractedDate;
+                today.setHours(0, 0, 0, 0);
+                const listingDate = new Date(prop.listing_date);
+                if (isNaN(listingDate.getTime())) {
+                    return { fill: '#6c757d', stroke: '#fff' };
+                }
+                listingDate.setHours(0, 0, 0, 0);
+                const diffTime = today - listingDate;
                 const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                 if (days < 0) {
                     return { fill: '#6c757d', stroke: '#fff' };
@@ -2277,10 +2297,10 @@
                 maintenanceMinSlider.value = minMaintenance;
                 maintenanceMinSlider.step = step;
 
-                const maxValueSteps = Math.ceil(maxMaintenance / step);
+                // Set max slider to the actual max maintenance (not the padded sliderMax)
                 maintenanceMaxSlider.min = sliderMin;
                 maintenanceMaxSlider.max = sliderMax;
-                maintenanceMaxSlider.value = maxValueSteps * step;
+                maintenanceMaxSlider.value = maxMaintenance;
                 maintenanceMaxSlider.step = step;
 
                 actualMaxMaintenance = maxMaintenance;
@@ -2487,6 +2507,9 @@
             
             // Get include older properties checkbox
             const includeOlderProperties = document.getElementById('includeOlderProperties').checked;
+            
+            // Get opportunity zone filter checkbox
+            const opportunityZoneFilter = document.getElementById('opportunityZoneFilter').checked;
 
             filteredProperties = allProperties.filter(prop => {
                 // Extraction date filter (default: only show most recent extraction day)
@@ -2555,6 +2578,13 @@
                     }
                 }
 
+                // Opportunity zone filter
+                if (opportunityZoneFilter) {
+                    if (!prop.opportunity_zone || prop.opportunity_zone === null || prop.opportunity_zone === '') {
+                        return false;
+                    }
+                }
+
                 // School grade filter
                 if (!meetsSchoolGradeRequirements(prop)) {
                     return false;
@@ -2565,6 +2595,7 @@
 
             updateStats();
             displayProperties();
+            updateMap(); // Ensure map is updated after filtering
         }
 
         // Update statistics
@@ -2586,7 +2617,7 @@
                     document.getElementById('priceRange').textContent = '$0 - $0';
                 }
                 
-                const maintenanceFees = filteredProperties.map(p => p.monthly_maintenance_fee).filter(f => f !== null && f !== undefined);
+                const maintenanceFees = filteredProperties.map(p => p.monthly_maintenance_fee).filter(f => f !== null && f !== undefined && f > 0);
                 if (maintenanceFees.length > 0) {
                     const minMaintenance = Math.min(...maintenanceFees);
                     const maxMaintenance = Math.max(...maintenanceFees);
@@ -2601,7 +2632,7 @@
                 }
             } else {
                 document.getElementById('priceRange').textContent = '$0 - $0';
-                document.getElementById('maintenanceRange').textContent = '$0 - $0';
+                document.getElementById('maintenanceRange').textContent = 'N/A';
             }
         }
 
@@ -2737,12 +2768,15 @@
                 const isSelected = selectedProperties.has(prop.mls_number);
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
                 
-                // Calculate days on market
+                // Calculate days on market from listing_date
                 let daysOnMarket = null;
-                if (prop.extracted_at_date) {
-                    const extractedDate = new Date(prop.extracted_at_date);
+                if (prop.listing_date && prop.listing_date !== 'Just Listed') {
+                    const listingDate = new Date(prop.listing_date);
                     const today = new Date();
-                    const diffTime = today - extractedDate;
+                    // Set time to midnight for accurate day calculation
+                    today.setHours(0, 0, 0, 0);
+                    listingDate.setHours(0, 0, 0, 0);
+                    const diffTime = today - listingDate;
                     daysOnMarket = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                     if (daysOnMarket < 0) daysOnMarket = null;
                 }
@@ -2795,6 +2829,7 @@
         document.getElementById('areaFilter').addEventListener('change', filterProperties);
         document.getElementById('propertyTypeFilter').addEventListener('change', filterProperties);
         document.getElementById('includeOlderProperties').addEventListener('change', filterProperties);
+        document.getElementById('opportunityZoneFilter').addEventListener('change', filterProperties);
         document.getElementById('zipcodeFilter').addEventListener('change', filterProperties);
         document.getElementById('sortBy').addEventListener('change', () => {
             sortProperties();
