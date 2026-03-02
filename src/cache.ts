@@ -125,22 +125,17 @@ function checkL1Cache(
  */
 async function checkL2Cache(
   params: CacheParams,
-  value: string | null,
-  metadata: any,
+  l2: { value: string; cachedAt?: number; etag?: string },
   now: number
 ): Promise<GetCachedJSONResult | null> {
-  if (!value) {
-    return null;
-  }
+  // Store in L1 cache in the requested format
+  const l1Data = params.parse ? JSON.parse(l2.value) : l2.value;
 
-  const meta = metadata as { cachedAt?: number; etag?: string };
-  const kvEtag = meta?.etag || '';
-  const cachedAt = meta?.cachedAt || 0;
+  // Calculate cache metadata
+  const cachedAt = Number(l2.cachedAt) || 0;
   const age = now - cachedAt;
   const isFresh = age < params.ttl_ms;
-
-  // Store in L1 cache in the requested format
-  const l1Data = params.parse ? JSON.parse(value) : value;
+  const kvEtag = l2.etag || '';
 
   // CRITICAL: Set L1 on BOTH paths.
   // If fresh, we use the original 'cachedAt'.
@@ -181,28 +176,30 @@ async function checkL2Cache(
  */
 async function handleMiss(
   params: CacheParams,
-  warm: { json: any; validatedAt: number; etag: string } | undefined,
-  value: string | null,
-  meta: { cachedAt?: number; etag?: string },
+  l1: { json: any; validatedAt: number; etag: string } | undefined,
+  l2: { value: string; etag?: string } | null,
   now: number
 ): Promise<GetCachedJSONResult> {
   // Check for stale data from already-looked-up sources
   let staleDataParam: any;
+  let oldEtag: string | undefined;
 
   // Use L1 value if available (already checked above, but was stale)
-  if (warm) {
-    staleDataParam = warm.json;
+  if (l1) {
+    staleDataParam = l1.json;
+    oldEtag = l1.etag;
   }
   // Use L2 value if available (already checked above, always a string)
-  else if (value) {
-    staleDataParam = value;
+  else if (l2) {
+    staleDataParam = l2.value;
+    oldEtag = l2.etag;
   }
 
   let fetchResult: { data: string | null | any; etag: string; isStale?: boolean } | null = null;
   let fetchError: Error | null = null;
 
   try {
-    fetchResult = await params.fetcher(undefined, staleDataParam);
+    fetchResult = await params.fetcher(oldEtag, staleDataParam);
 
     // Only return fresh data if not stale
     if (!fetchResult.isStale) {
@@ -304,12 +301,14 @@ export async function getCachedJSON(
 
   // 2. L2 HIT (KV)
   const { value, metadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
-  const l2Result = await checkL2Cache(params, value, metadata, now);
-  if (l2Result) {
-    return l2Result;
+  if (value) {
+    const meta = metadata as { cachedAt?: number; etag?: string } | null;
+    const l2Result = await checkL2Cache(params, { value, cachedAt: meta?.cachedAt, etag: meta?.etag }, now);
+    if (l2Result) {
+      return l2Result;
+    }
   }
 
   // 3. MISS: Network fallback
-  const meta = metadata as { cachedAt?: number; etag?: string };
-  return handleMiss(params, warm, value, meta, now);
+  return handleMiss(params, warm, value ? { value, etag: (metadata as { etag?: string } | null)?.etag } : null, now);
 }
