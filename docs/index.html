@@ -318,6 +318,7 @@
             display: flex;
             align-items: center;
             gap: 5px;
+            white-space: nowrap;
         }
 
         .property-detail-item strong {
@@ -344,13 +345,13 @@
 
         .property-link {
             display: inline-block;
-            margin-top: 15px;
-            padding: 8px 16px;
+            margin-top: 0;
+            padding: 5px 10px;
             background: #1a5f3f;
             color: white;
             text-decoration: none;
-            border-radius: 6px;
-            font-size: 0.9em;
+            border-radius: 4px;
+            font-size: 0.75em;
             transition: background 0.2s;
         }
 
@@ -2126,9 +2127,38 @@
                     propertyMarkers.push(waterMarker);
                 }
                 
-                const address = prop.street_number && prop.street 
-                    ? `${prop.street_number} ${prop.street}, ${prop.city}, ${prop.state} ${prop.zipcode || ''}`
-                    : `${prop.city}, ${prop.state} ${prop.zipcode || ''}`;
+                // Build address on 2 lines: Street on line 1, City State zipcode on line 2
+                const streetAddress = (prop.street_number && prop.street) 
+                    ? `${prop.street_number} ${prop.street}` 
+                    : '';
+                
+                // Get city and state
+                const cityRaw = String(prop.city || '').trim();
+                const stateRaw = String(prop.state || '').trim();
+                
+                // Build second line (city, state zipcode) - comma after city, not after state
+                let secondLineParts = [];
+                if (cityRaw && stateRaw) {
+                    secondLineParts.push(`${cityRaw}, ${stateRaw}`);
+                } else if (cityRaw) {
+                    secondLineParts.push(cityRaw);
+                } else if (stateRaw) {
+                    secondLineParts.push(stateRaw);
+                }
+                if (prop.zipcode) {
+                    secondLineParts.push(String(prop.zipcode));
+                }
+                const secondLine = secondLineParts.join(' ');
+                
+                // Build address with 2 separate spans
+                let addressHtml = '';
+                if (streetAddress) {
+                    addressHtml += `<span style="display: block;">${streetAddress}</span>`;
+                }
+                if (secondLine) {
+                    addressHtml += `<span style="display: block;">${secondLine}</span>`;
+                }
+                const address = addressHtml || '';
                 
                 const popup = L.popup().setContent(`
                     <strong>$${prop.price ? prop.price.toLocaleString() : 'N/A'}</strong><br>
@@ -2753,9 +2783,38 @@
             sortProperties();
 
             container.innerHTML = filteredProperties.map(prop => {
-                const address = prop.street_number && prop.street 
-                    ? `${prop.street_number} ${prop.street}, ${prop.city}, ${prop.state} ${prop.zipcode || ''}`
-                    : `${prop.city}, ${prop.state} ${prop.zipcode || ''}`;
+                // Build address on 2 lines: Street on line 1, City State zipcode on line 2
+                const streetAddress = (prop.street_number && prop.street) 
+                    ? `${prop.street_number} ${prop.street}` 
+                    : '';
+                
+                // Get city and state
+                const cityRaw = String(prop.city || '').trim();
+                const stateRaw = String(prop.state || '').trim();
+                
+                // Build second line (city, state zipcode) - comma after city, not after state
+                let secondLineParts = [];
+                if (cityRaw && stateRaw) {
+                    secondLineParts.push(`${cityRaw}, ${stateRaw}`);
+                } else if (cityRaw) {
+                    secondLineParts.push(cityRaw);
+                } else if (stateRaw) {
+                    secondLineParts.push(stateRaw);
+                }
+                if (prop.zipcode) {
+                    secondLineParts.push(String(prop.zipcode));
+                }
+                const secondLine = secondLineParts.join(' ');
+                
+                // Build address with 2 separate spans
+                let addressHtml = '';
+                if (streetAddress) {
+                    addressHtml += `<span style="display: block;">${streetAddress}</span>`;
+                }
+                if (secondLine) {
+                    addressHtml += `<span style="display: block;">${secondLine}</span>`;
+                }
+                const address = addressHtml || '';
                 
                 const mainImage = prop.images && prop.images.length > 0 
                     ? prop.images[0] 
@@ -2799,15 +2858,13 @@
                                 ${prop.sqft ? `<div class="property-detail-item"><strong>Sqft:</strong> ${prop.sqft.toLocaleString()}</div>` : ''}
                                 ${prop.lot_size_sqft ? `<div class="property-detail-item"><strong>Lot:</strong> ${prop.lot_size_sqft.toLocaleString()} sqft</div>` : ''}
                                 ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
-                                ${daysOnMarket !== null ? `<div class="property-detail-item"><strong>Days on Market:</strong> ${daysOnMarket}</div>` : ''}
+                                ${daysOnMarket !== null ? `<div class="property-detail-item"><strong>Days:</strong> ${daysOnMarket}</div>` : ''}
                             </div>
                             ${prop.property_type ? `<span class="property-type">${prop.property_type}</span>` : ''}
-                            ${prop.monthly_maintenance_fee ? `
-                                <div class="property-maintenance">
-                                    <strong>Monthly Maintenance:</strong> $${prop.monthly_maintenance_fee.toLocaleString()}
-                                </div>
-                            ` : ''}
-                            <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <div class="property-maintenance">
+                                <strong>Monthly Maintenance:</strong> $${(prop.monthly_maintenance_fee !== null && prop.monthly_maintenance_fee !== undefined ? prop.monthly_maintenance_fee : 0).toLocaleString()}
+                            </div>
+                            <div style="margin-top: 15px; display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center;">
                                 ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link" onclick="event.stopPropagation()">View on HAR.com</a>` : ''}
                                 ${prop.latitude && prop.longitude ? `<a href="https://msc.fema.gov/portal/firmette?latitude=${prop.latitude}&longitude=${prop.longitude}" target="_blank" class="property-link" style="background: #0066cc;" onclick="event.stopPropagation()">FEMA Flood Map</a>` : ''}
                             </div>
