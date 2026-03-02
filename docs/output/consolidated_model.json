@@ -1,0 +1,857 @@
+{
+  "$schema": "http://json-schema.org/draft-2020-12/schema",
+  "title": "Consolidated Data Model",
+  "description": "Consolidated entity schemas from data model files",
+  "$defs": {
+    "city": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "City name (primary key)"
+        },
+        "state": {
+          "type": "string",
+          "description": "Foreign key reference to state.state"
+        },
+        "zipcodes": {
+          "type": "array",
+          "description": "ZIP codes within this city",
+          "items": {
+            "$ref": "#/$defs/zipcode"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "crime_stats": {
+      "type": "object",
+      "properties": {
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code as integer, primary key and foreign key to zipcode_area"
+        },
+        "violent_crime": {
+          "type": "number",
+          "description": "Violent crime score (1-100 scale, US average: 22.7)"
+        },
+        "property_crime": {
+          "type": "number",
+          "description": "Property crime score (1-100 scale, US average: 35.4)"
+        }
+      },
+      "required": [
+        "zipcode"
+      ],
+      "x-created": 2,
+      "x-version": 1
+    },
+    "demographic_stats": {
+      "type": "object",
+      "properties": {
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code as integer, foreign key to zipcode_area"
+        },
+        "hispanic": {
+          "type": "number",
+          "description": "Percentage of Hispanic population (0-100)"
+        },
+        "black": {
+          "type": "number",
+          "description": "Percentage of Black/African American population (0-100)"
+        },
+        "white_nh": {
+          "type": "number",
+          "description": "Percentage of White (non-Hispanic) population (0-100)"
+        },
+        "asian": {
+          "type": "number",
+          "description": "Percentage of Asian population (0-100)"
+        }
+      },
+      "required": [
+        "zipcode"
+      ],
+      "x-created": 2,
+      "x-version": 2
+    },
+    "fault": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the fault key point (short string)"
+        },
+        "fault_system_name": {
+          "type": "string",
+          "description": "Foreign key reference to fault_system.name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the key point location"
+        },
+        "lat": {
+          "type": "number",
+          "description": "Latitude coordinate (decimal degrees, WGS84)"
+        },
+        "long": {
+          "type": "number",
+          "description": "Longitude coordinate (decimal degrees, WGS84)"
+        },
+        "location": {
+          "type": "string",
+          "description": "Human-readable location description"
+        }
+      },
+      "required": [
+        "id",
+        "fault_system_name",
+        "description"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "fault_system": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Fault system name (e.g., 'Long Point Fault')"
+        },
+        "type": {
+          "type": "string",
+          "description": "Fault type classification",
+          "enum": [
+            "Normal Growth Fault",
+            "Salt Dome Related"
+          ]
+        },
+        "avg_movement": {
+          "type": "integer",
+          "description": "Average movement rate in millimeters per year (mm/year)"
+        },
+        "faults": {
+          "type": "array",
+          "description": "Array of key points along the fault",
+          "items": {
+            "$ref": "#/$defs/fault"
+          }
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "geographic_area": {
+      "type": "object",
+      "properties": {
+        "area_id": {
+          "type": "string",
+          "description": "Unique identifier for the geographic area (format: type_name, e.g., 'neighborhood_the_heights')"
+        },
+        "area_type": {
+          "type": "string",
+          "description": "Type of geographic area",
+          "enum": [
+            "neighborhood",
+            "market_sector",
+            "exurb_hub",
+            "market_ring",
+            "neighborhood_polygon",
+            "upcoming_area",
+            "flood_risk",
+            "school_zone",
+            "school_zone_sub_division",
+            "investment_zone",
+            "opportunity_zone"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the geographic area"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the geographic area"
+        },
+        "zip_codes": {
+          "type": "array",
+          "description": "List of ZIP codes associated with this area (as integers, optional)",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes about the area (e.g., development, affordability, investment potential for upcoming areas)"
+        },
+        "bounds": {
+          "type": "array",
+          "description": "Geographic bounds for this area (typically one bounds object per area)",
+          "items": {
+            "$ref": "#/$defs/geographic_bounds"
+          }
+        },
+        "schools": {
+          "type": "array",
+          "description": "Schools associated with this geographic area (school districts/school zones)",
+          "items": {
+            "$ref": "#/$defs/school"
+          }
+        }
+      },
+      "required": [
+        "area_id",
+        "area_type",
+        "name"
+      ],
+      "x-created": 1,
+      "x-modified": [
+        2,
+        3,
+        4
+      ],
+      "x-version": 4
+    },
+    "geographic_bounds": {
+      "type": "object",
+      "properties": {
+        "area_id": {
+          "type": "string",
+          "description": "Primary key and foreign key reference to geographic_area.area_id"
+        },
+        "north_lat": {
+          "type": "number",
+          "description": "Northern latitude boundary"
+        },
+        "south_lat": {
+          "type": "number",
+          "description": "Southern latitude boundary"
+        },
+        "west_lng": {
+          "type": "number",
+          "description": "Western longitude boundary"
+        },
+        "east_lng": {
+          "type": "number",
+          "description": "Eastern longitude boundary"
+        }
+      },
+      "required": [
+        "area_id",
+        "north_lat",
+        "south_lat",
+        "west_lng",
+        "east_lng"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "property": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "MLS (Multiple Listing Service) number - unique identifier for the property"
+        },
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code as integer - foreign key reference to zipcode.zipcode"
+        },
+        "url": {
+          "type": "string",
+          "description": "URL to the property detail page on HAR.com"
+        },
+        "status": {
+          "type": "string",
+          "description": "Listing status (typically 'Foreclosure' for these properties)"
+        },
+        "listing_date": {
+          "type": "string",
+          "description": "Date the property was listed (ISO format YYYY-MM-DD, 'Just Listed', or MM/DD/YY format). Derived from 'X Day(s) on Market' when available."
+        },
+        "auction_dates": {
+          "type": "string",
+          "description": "Auction dates for foreclosure properties (format: MM/DD/YY-MM/DD/YY)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Property description text"
+        },
+        "address": {
+          "type": "array",
+          "description": "Street address details for this property",
+          "items": {
+            "$ref": "#/$defs/property_address"
+          }
+        },
+        "detail": {
+          "type": "array",
+          "description": "Physical characteristics and details for this property",
+          "items": {
+            "$ref": "#/$defs/property_detail"
+          }
+        },
+        "geolocation": {
+          "type": "array",
+          "description": "Geolocation data including coordinates, elevation, flood zone, and fault proximity",
+          "items": {
+            "$ref": "#/$defs/property_geolocation"
+          }
+        },
+        "media": {
+          "type": "array",
+          "description": "Images and media associated with this property",
+          "items": {
+            "$ref": "#/$defs/property_media"
+          }
+        },
+        "metadata": {
+          "type": "array",
+          "description": "Extraction and tracking metadata for this property",
+          "items": {
+            "$ref": "#/$defs/property_metadata"
+          }
+        },
+        "economics": {
+          "type": "array",
+          "description": "Economic information for this property including pricing and maintenance fees",
+          "items": {
+            "$ref": "#/$defs/property_economics"
+          }
+        },
+        "property_schools": {
+          "type": "array",
+          "description": "School associations for this property, with separate links to elementary, middle, and high schools by school_id",
+          "items": {
+            "$ref": "#/$defs/property_schools"
+          }
+        }
+      },
+      "required": [
+        "mls_number",
+        "zipcode"
+      ],
+      "x-created": 2,
+      "x-version": 1
+    },
+    "property_address": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number"
+        },
+        "street_number": {
+          "type": "integer",
+          "description": "Street number portion of the property address (as integer)"
+        },
+        "street": {
+          "type": "string",
+          "description": "Street name portion of the property address"
+        },
+        "city": {
+          "type": "string",
+          "description": "City name (extracted from address)"
+        },
+        "state": {
+          "type": "string",
+          "description": "State abbreviation (e.g., 'TX', extracted from address)"
+        },
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code as integer (extracted from address)"
+        },
+        "county": {
+          "type": "string",
+          "description": "County name (if available)"
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 2,
+      "x-version": 1
+    },
+    "property_detail": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number"
+        },
+        "property_type": {
+          "type": "string",
+          "description": "Type of property (e.g., 'Single-Family', 'Condo', 'Townhouse', 'Lots')",
+          "enum": [
+            "Condo",
+            "Land",
+            "Multi-Family",
+            "Single-Family",
+            "Townhouse"
+          ]
+        },
+        "beds": {
+          "type": "integer",
+          "description": "Number of bedrooms"
+        },
+        "full_baths": {
+          "type": "integer",
+          "description": "Number of full bathrooms"
+        },
+        "half_baths": {
+          "type": "integer",
+          "description": "Number of half bathrooms"
+        },
+        "sqft": {
+          "type": "integer",
+          "description": "Square footage of the property"
+        },
+        "lot_size_sqft": {
+          "type": "integer",
+          "description": "Lot size in square feet as integer"
+        },
+        "year_built": {
+          "type": "integer",
+          "description": "Year the property was built"
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 2,
+      "x-version": 2
+    },
+    "property_economics": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number and property_detail.mls_number (for computed field access)"
+        },
+        "price": {
+          "type": "integer",
+          "description": "Listing price as integer (in dollars)"
+        },
+        "price_per_sqft": {
+          "type": "number",
+          "description": "Price per square foot (calculated as price / sqft from property_detail)",
+          "readOnly": true
+        },
+        "opportunity_zone": {
+          "type": "string",
+          "description": "Foreign key reference to geographic_area.area_id if property is located within an opportunity zone"
+        },
+        "monthly_maintenance_fee": {
+          "type": "integer",
+          "description": "Monthly maintenance fee in dollars (as integer)"
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "property_geolocation": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "Latitude coordinate from geocoding (decimal degrees)"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "Longitude coordinate from geocoding (decimal degrees)"
+        },
+        "elevation_ft": {
+          "type": "number",
+          "description": "Elevation in feet above sea level (from USGS)"
+        },
+        "flood_zone": {
+          "type": "string",
+          "description": "FEMA flood zone designation (A/AE/AH/AO/A99/AR = Special Flood Hazard, V/VE = Coastal High Hazard, X = Minimal Risk, D = Undetermined)",
+          "enum": [
+            "A",
+            "AE",
+            "AH",
+            "AO",
+            "A99",
+            "AR",
+            "D",
+            "V",
+            "VE",
+            "X",
+            "X500"
+          ]
+        },
+        "nearest_fault_meters": {
+          "type": "integer",
+          "description": "Distance to nearest fault line in meters"
+        },
+        "nearest_fault_id": {
+          "type": "string",
+          "description": "Foreign key reference to fault.id - the nearest fault key point"
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 2,
+      "x-version": 2
+    },
+    "property_media": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number"
+        },
+        "images": {
+          "type": "array",
+          "description": "Array of image URLs for the property",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 2,
+      "x-version": 2
+    },
+    "property_metadata": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number"
+        },
+        "index": {
+          "type": "integer",
+          "description": "Index number assigned during extraction"
+        },
+        "extracted_at": {
+          "type": "string",
+          "description": "ISO timestamp when the property was extracted"
+        },
+        "details_fetched_at": {
+          "type": "string",
+          "description": "ISO timestamp when detail page data was fetched"
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 2,
+      "x-version": 2
+    },
+    "property_schools": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number"
+        },
+        "elementary_school_id": {
+          "type": "integer",
+          "description": "Foreign key reference to school.school_id for the elementary school assigned to this property"
+        },
+        "middle_school_id": {
+          "type": "integer",
+          "description": "Foreign key reference to school.school_id for the middle school assigned to this property"
+        },
+        "high_school_id": {
+          "type": "integer",
+          "description": "Foreign key reference to school.school_id for the high school assigned to this property"
+        }
+      },
+      "required": [
+        "mls_number"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "school": {
+      "type": "object",
+      "properties": {
+        "school_id": {
+          "type": "integer",
+          "description": "Unique school identifier from HAR.com (extracted from URL pattern: /school/{school_id}/...)"
+        },
+        "name": {
+          "type": "string",
+          "description": "School name (e.g., 'Martinez R Elementary School')"
+        },
+        "level": {
+          "type": "string",
+          "description": "School level/type (Elementary, Middle, or High)",
+          "enum": [
+            "Elementary",
+            "Middle",
+            "High"
+          ]
+        },
+        "grade": {
+          "type": "string",
+          "description": "School letter grade (A, B, C, D, or F)",
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "F"
+          ]
+        },
+        "latitude": {
+          "type": "number",
+          "description": "School latitude coordinate (decimal degrees) - geolocation data for the school"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "School longitude coordinate (decimal degrees) - geolocation data for the school"
+        },
+        "street": {
+          "type": "string",
+          "description": "Street address of the school"
+        },
+        "city": {
+          "type": "string",
+          "description": "City where the school is located"
+        },
+        "state": {
+          "type": "string",
+          "description": "State abbreviation where the school is located (e.g., 'TX')"
+        },
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code where the school is located"
+        },
+        "area_id": {
+          "type": "string",
+          "description": "Foreign key reference to geographic_area.area_id (school district/school zone)"
+        }
+      },
+      "required": [
+        "school_id"
+      ],
+      "x-created": 1,
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "State abbreviation (e.g., 'TX') - primary key",
+          "enum": [
+            "TX"
+          ]
+        },
+        "cities": {
+          "type": "array",
+          "description": "Cities within this state",
+          "items": {
+            "$ref": "#/$defs/city"
+          }
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "x-created": 1,
+      "x-version": 1
+    },
+    "zipcode": {
+      "type": "object",
+      "properties": {
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code as integer (primary key)"
+        },
+        "city": {
+          "type": "string",
+          "description": "Foreign key reference to city.name"
+        },
+        "county": {
+          "type": "string",
+          "description": "County name (if available)"
+        },
+        "properties": {
+          "type": "array",
+          "description": "Properties located in this ZIP code",
+          "items": {
+            "$ref": "#/$defs/property"
+          }
+        }
+      },
+      "required": [
+        "zipcode"
+      ],
+      "x-created": 2,
+      "x-version": 1
+    },
+    "zipcode_area": {
+      "type": "object",
+      "properties": {
+        "zipcode": {
+          "type": "integer",
+          "description": "ZIP code as integer"
+        },
+        "crime_statistics": {
+          "type": "array",
+          "description": "Crime statistics for this ZIP code area (one record per ZIP code)",
+          "items": {
+            "$ref": "#/$defs/crime_stats"
+          }
+        },
+        "demographics": {
+          "type": "array",
+          "description": "Demographic statistics for this ZIP code area",
+          "items": {
+            "$ref": "#/$defs/demographic_stats"
+          }
+        }
+      },
+      "required": [
+        "zipcode"
+      ],
+      "x-created": 2,
+      "x-version": 1
+    }
+  },
+  "type": "object",
+  "properties": {
+    "city": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/city"
+      }
+    },
+    "crime_stats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/crime_stats"
+      }
+    },
+    "demographic_stats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/demographic_stats"
+      }
+    },
+    "fault": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fault"
+      }
+    },
+    "fault_system": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fault_system"
+      }
+    },
+    "geographic_area": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/geographic_area"
+      }
+    },
+    "geographic_bounds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/geographic_bounds"
+      }
+    },
+    "property": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property"
+      }
+    },
+    "property_address": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_address"
+      }
+    },
+    "property_detail": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_detail"
+      }
+    },
+    "property_economics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_economics"
+      }
+    },
+    "property_geolocation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_geolocation"
+      }
+    },
+    "property_media": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_media"
+      }
+    },
+    "property_metadata": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_metadata"
+      }
+    },
+    "property_schools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_schools"
+      }
+    },
+    "school": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/school"
+      }
+    },
+    "state": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/state"
+      }
+    },
+    "zipcode": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zipcode"
+      }
+    },
+    "zipcode_area": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zipcode_area"
+      }
+    }
+  },
+  "additionalProperties": false
+}
