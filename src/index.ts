@@ -118,6 +118,19 @@ export default {
   async fetch(request: Request, env: any, ctx: any) {
     const url = new URL(request.url);
 
+    // Handle OPTIONS requests for CORS
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
     // Use the native platform's pattern matcher
     const handler = apiRoutes[url.pathname];
 
