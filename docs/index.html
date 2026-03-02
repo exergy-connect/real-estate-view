@@ -1480,7 +1480,7 @@
                 ${propertyLegend}
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #3498db; border: 2px solid #2980b9;"></div>
-                    <span>🌊 Flood Risk Property</span>
+                    <span>~ ~ Flood Risk Property</span>
                 </div>
                 <div class="map-legend-item">
                     <div class="map-legend-color" style="background: #ffc107; border-color: #333;"></div>
@@ -2069,6 +2069,7 @@
                 const isSelected = selectedProperties.has(mlsNum);
                 const isFiltered = isFilteredProp;
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
+                const isOpportunityZone = prop.opportunity_zone === true || prop.opportunity_zone === 'true' || prop.opportunity_zone === 1;
                 
                 // Get color based on visualization mode
                 const colors = getPropertyColor(prop, isSelected, isInFloodRisk);
@@ -2112,7 +2113,7 @@
                     // Create a custom div icon with crashing wave emoji
                     const waterIcon = L.divIcon({
                         className: 'flood-risk-icon',
-                        html: '<div style="font-size: 16px; text-align: center; line-height: 1; pointer-events: none;">🌊</div>',
+                        html: '<div style="font-size: 20px; text-align: center; line-height: 1; pointer-events: none; font-weight: bold;">~ ~</div>',
                         iconSize: [20, 20],
                         iconAnchor: [10, 10]
                     });
@@ -2165,7 +2166,8 @@
                     ${address}<br>
                     ${prop.beds ? `${prop.beds} bed` : ''} ${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}<br>
                     ${prop.nearest_fault_meters ? `Nearest fault: ${(prop.nearest_fault_meters / 1000).toFixed(2)} km` : ''}
-                    ${isInFloodRisk ? '<br><span style="color: #e74c3c; font-weight: bold;">⚠️ High Flood Risk Area</span>' : ''}
+                    ${isInFloodRisk ? '<br><span style="color: #e74c3c; font-weight: bold;">~ ~ High Flood Risk Area</span>' : ''}
+                    ${isOpportunityZone ? '<br><span style="color: #1abc9c; font-weight: bold;">📈 Opportunity Zone</span>' : ''}
                     ${!isFiltered ? '<br><em style="color: #666;">(Filtered out)</em>' : ''}
                     <br><button onclick="window.togglePropertySelection(${mlsNum}); map.closePopup();" style="margin-top: 5px; padding: 5px 10px; cursor: pointer;">${isSelected ? 'Deselect' : 'Select'}</button>
                 `);
@@ -2826,6 +2828,7 @@
 
                 const isSelected = selectedProperties.has(prop.mls_number);
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
+                const isOpportunityZone = prop.opportunity_zone === true || prop.opportunity_zone === 'true' || prop.opportunity_zone === 1;
                 
                 // Calculate days on market from listing_date
                 let daysOnMarket = null;
@@ -2844,12 +2847,14 @@
                     <div class="property-card ${isSelected ? 'selected' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
                         <div class="property-image">
                             ${imageHtml}
-                            ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 18px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">🌊</div>' : ''}
+                            ${isInFloodRisk ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(230, 126, 34, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2;">~ ~</div>' : ''}
+                            ${isOpportunityZone ? `<div style="position: absolute; top: ${isInFloodRisk ? '50px' : '10px'}; right: 10px; background: rgba(26, 188, 156, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 18px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📈</div>` : ''}
                         </div>
                         <div class="property-content">
                             <div class="property-price">
                                 $${prop.price ? prop.price.toLocaleString() : 'N/A'}${(prop.price && prop.sqft && prop.sqft > 0) ? ` <span style="font-size: 0.6em; color: #666;">($${Math.round(prop.price / prop.sqft).toLocaleString()}/sqft)</span>` : ''}
-                                ${isInFloodRisk ? ' <span style="color: #e74c3c; font-size: 0.8em; margin-left: 8px;" title="High Flood Risk Area">🌊</span>' : ''}
+                                ${isInFloodRisk ? ' <span style="color: #e74c3c; font-size: 0.8em; margin-left: 8px; display: inline-block;" title="High Flood Risk Area">~ ~</span>' : ''}
+                                ${isOpportunityZone ? ' <span style="color: #1abc9c; font-size: 0.8em; margin-left: 8px;" title="Opportunity Zone">📈</span>' : ''}
                             </div>
                             <div class="property-address">${address}</div>
                             <div class="property-details">
