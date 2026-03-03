@@ -844,37 +844,6 @@
       ],
       "x-created": 2,
       "x-version": 1
-    },
-    "change": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "integer",
-          "description": "Unique change identifier (monotonically increasing)"
-        },
-        "timestamp": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp of the change"
-        },
-        "author": {
-          "type": "string",
-          "description": "Author of the change"
-        },
-        "note": {
-          "type": "string",
-          "description": "Optional note describing the change"
-        },
-        "git_commit_hash": {
-          "type": "string",
-          "description": "Git commit hash corresponding to this change"
-        }
-      },
-      "required": [
-        "id",
-        "timestamp"
-      ],
-      "additionalProperties": false
     }
   },
   "type": "object",
@@ -998,21 +967,7 @@
       "items": {
         "$ref": "#/$defs/zipcode_area"
       }
-    },
-    "change": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/change"
-      }
     }
   },
-  "additionalProperties": false,
-  "changes": [
-    {
-      "id": 1,
-      "timestamp": "2026-03-02T12:04:15.796065",
-      "author": "jeroen",
-      "note": "Consolidate har_model with search_profile and composite enum support"
-    }
-  ]
+  "additionalProperties": false
 }
