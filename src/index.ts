@@ -33,6 +33,20 @@ export default {
       });
     }
 
+    // RFC8414: OAuth 2.0 Authorization Server Metadata
+    if (url.pathname === "/.well-known/oauth-authorization-server") {
+      return new Response(JSON.stringify({
+        issuer: `https://${url.hostname}`,
+        authorization_endpoint: `https://${url.hostname}/auth`,
+        token_endpoint: `https://${url.hostname}/token`,
+        response_types_supported: ["code"],
+        subject_types_supported: ["public"],
+        id_token_signing_alg_values_supported: ["RS256"]
+      }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
     // Use the native platform's pattern matcher
     const handler = apiRoutes[url.pathname];
 

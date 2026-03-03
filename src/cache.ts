@@ -24,7 +24,9 @@ export enum CacheStatus {
   /** Cache is stale, serving old data while revalidating in background */
   STALE_REVALIDATING = 'STALE_REVALIDATING',
   /** Cache miss, fetched from source */
-  MISS = 'MISS'
+  MISS = 'MISS',
+  /** Error occurred during cache operation */
+  ERROR = 'ERROR'
 }
 
 /**
