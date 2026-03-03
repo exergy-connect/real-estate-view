@@ -145,6 +145,78 @@ server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error(`Tool calls must be handled with context. Tool: ${name}`);
 });
 
+// Store active SSE sessions (in production, use Durable Objects or KV)
+const activeSessions = new Map<string, {
+  controller: ReadableStreamDefaultController;
+  lastActivity: number;
+}>();
+
+// Clean up old sessions periodically
+function cleanupSessions() {
+  const now = Date.now();
+  const maxAge = 5 * 60 * 1000; // 5 minutes
+  for (const [sessionId, session] of activeSessions.entries()) {
+    if (now - session.lastActivity > maxAge) {
+      try {
+        session.controller.close();
+      } catch (e) {
+        // Ignore errors when closing
+      }
+      activeSessions.delete(sessionId);
+    }
+  }
+}
+
+/**
+ * Creates an SSE stream for MCP communication
+ */
+function createSSEStream(sessionId: string, messagesUrl: string): ReadableStream {
+  let controller: ReadableStreamDefaultController;
+  
+  const stream = new ReadableStream({
+    start(ctrl) {
+      controller = ctrl;
+      activeSessions.set(sessionId, {
+        controller: ctrl,
+        lastActivity: Date.now()
+      });
+      
+      // Send the endpoint event (required by MCP SSE protocol)
+      const encoder = new TextEncoder();
+      const endpointEvent = `event: endpoint\ndata: ${messagesUrl}\n\n`;
+      ctrl.enqueue(encoder.encode(endpointEvent));
+    },
+    cancel() {
+      activeSessions.delete(sessionId);
+    }
+  });
+  
+  return stream;
+}
+
+/**
+ * Sends a message through an SSE stream
+ */
+function sendSSEMessage(sessionId: string, message: any): boolean {
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    return false;
+  }
+  
+  try {
+    const encoder = new TextEncoder();
+    const data = JSON.stringify(message);
+    const sseMessage = `data: ${data}\n\n`;
+    session.controller.enqueue(encoder.encode(sseMessage));
+    session.lastActivity = Date.now();
+    return true;
+  } catch (error) {
+    console.error('Error sending SSE message:', error);
+    activeSessions.delete(sessionId);
+    return false;
+  }
+}
+
 /**
  * Main MCP handler for the /api/mcp/sse endpoint
  */
@@ -160,44 +232,109 @@ export async function handleMCPRequest(
     });
   }
 
-  const { origin } = new URL(req.url);
+  const url = new URL(req.url);
+  const { origin } = url;
   const context = ctx || { waitUntil: (p: Promise<any>) => p };
   const requestContext = { env, ctx: context, origin };
   
-  // Handle GET requests for tool listing (simple format)
+  // Check if this is an SSE request (GET with Accept: text/event-stream or query param)
+  const acceptHeader = req.headers.get('Accept') || '';
+  const isSSERequest = req.method === 'GET' && (
+    acceptHeader.includes('text/event-stream') || 
+    url.searchParams.has('sse')
+  );
+  
+  // Handle GET requests - SSE stream or tool listing
   if (req.method === 'GET') {
-    const tools = [getModelToolDefinition()];
-    return new Response(JSON.stringify({ tools }), {
-      headers: {
-        'Content-Type': 'application/json',
-        ...getCorsHeaders()
-      }
-    });
+    if (isSSERequest) {
+      // Generate session ID
+      const sessionId = crypto.randomUUID();
+      const messagesUrl = `${url.pathname}?sessionId=${sessionId}`;
+      
+      // Create SSE stream
+      const stream = createSSEStream(sessionId, messagesUrl);
+      
+      // Clean up old sessions
+      cleanupSessions();
+      
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          ...getCorsHeaders()
+        }
+      });
+    } else {
+      // Simple tool listing
+      const tools = [getModelToolDefinition()];
+      return new Response(JSON.stringify({ tools }), {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getCorsHeaders()
+        }
+      });
+    }
   }
 
   // Handle POST requests for MCP protocol messages
   if (req.method === 'POST') {
+    // Check if this is an SSE message (has sessionId in query params)
+    const sessionId = url.searchParams.get('sessionId');
+    const isSSEMessage = sessionId !== null;
+    
     try {
       // Parse the JSON-RPC request
       const requestData = await req.json();
+      
+      // Helper to send response (either via SSE or HTTP)
+      const sendResponse = (response: any): Response => {
+        if (isSSEMessage) {
+          if (sendSSEMessage(sessionId, response)) {
+            // Response sent via SSE, return 202 Accepted
+            return new Response('Accepted', {
+              status: 202,
+              headers: getCorsHeaders()
+            });
+          } else {
+            // SSE session not found, return error
+            return new Response(JSON.stringify({
+              jsonrpc: '2.0',
+              id: response.id || null,
+              error: {
+                code: -32000,
+                message: 'SSE session not found'
+              }
+            }), {
+              status: 404,
+              headers: {
+                'Content-Type': 'application/json',
+                ...getCorsHeaders()
+              }
+            });
+          }
+        } else {
+          // Regular HTTP response
+          return new Response(JSON.stringify(response), {
+            headers: {
+              'Content-Type': 'application/json',
+              ...getCorsHeaders()
+            }
+          });
+        }
+      };
       
       // For tool calls, we need to handle them with context
       if (requestData.method === 'tools/call') {
         const { name, arguments: args } = requestData.params || {};
         
         if (!name) {
-          return new Response(JSON.stringify({
+          return sendResponse({
             jsonrpc: '2.0',
             id: requestData.id || null,
             error: {
               code: -32602,
               message: 'Missing tool name'
-            }
-          }), {
-            status: 400,
-            headers: {
-              'Content-Type': 'application/json',
-              ...getCorsHeaders()
             }
           });
         }
@@ -205,47 +342,45 @@ export async function handleMCPRequest(
         try {
           const toolResult = await handleToolCallWithContext(name, args, requestContext);
           
-          const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          };
-          
-          headers['Server-Timing'] = createServerTimingHeader(
-            toolResult.ioMs,
-            toolResult.cpuMs,
-            toolResult.cacheStatus
-          );
-          
-          return new Response(JSON.stringify({
+          const response: any = {
             jsonrpc: '2.0',
             id: requestData.id || null,
             result: {
               content: toolResult.content,
               isError: false
             }
-          }), { headers });
+          };
+          
+          // Add Server-Timing header for HTTP responses
+          if (!isSSEMessage) {
+            const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+              'Server-Timing': createServerTimingHeader(
+                toolResult.ioMs,
+                toolResult.cpuMs,
+                toolResult.cacheStatus
+              ),
+              ...getCorsHeaders()
+            };
+            return new Response(JSON.stringify(response), { headers });
+          }
+          
+          return sendResponse(response);
         } catch (error) {
-          return new Response(JSON.stringify({
+          return sendResponse({
             jsonrpc: '2.0',
             id: requestData.id || null,
             error: {
               code: -32603,
               message: error instanceof Error ? error.message : String(error)
             }
-          }), {
-            status: 500,
-            headers: {
-              'Content-Type': 'application/json',
-              ...getCorsHeaders()
-            }
           });
         }
       }
       
       // For other requests (initialize, tools/list), handle manually
-      // The SDK Server doesn't have handleRequest, so we route manually
       if (requestData.method === 'initialize') {
-        return new Response(JSON.stringify({
+        return sendResponse({
           jsonrpc: '2.0',
           id: requestData.id || null,
           result: {
@@ -258,53 +393,58 @@ export async function handleMCPRequest(
               version: '1.0.0'
             }
           }
-        }), {
-          headers: {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          }
         });
       }
       
       if (requestData.method === 'tools/list') {
         const tools = [getModelToolDefinition()];
-        return new Response(JSON.stringify({
+        return sendResponse({
           jsonrpc: '2.0',
           id: requestData.id || null,
           result: { tools }
-        }), {
-          headers: {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          }
         });
       }
       
       // Unknown method
-      return new Response(JSON.stringify({
+      return sendResponse({
         jsonrpc: '2.0',
         id: requestData.id || null,
         error: {
           code: -32601,
           message: `Unknown method: ${requestData.method}`
         }
-      }), {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getCorsHeaders()
-        }
       });
     } catch (error) {
       console.error('MCP handler error:', error);
-      return new Response(JSON.stringify({
+      
+      const errorResponse = {
         jsonrpc: '2.0',
         id: null,
         error: {
           code: -32603,
           message: error instanceof Error ? error.message : String(error)
         }
-      }), {
+      };
+      
+      if (isSSEMessage) {
+        if (sendSSEMessage(sessionId, errorResponse)) {
+          return new Response('Accepted', {
+            status: 202,
+            headers: getCorsHeaders()
+          });
+        } else {
+          // SSE session not found, return HTTP error
+          return new Response(JSON.stringify(errorResponse), {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/json',
+              ...getCorsHeaders()
+            }
+          });
+        }
+      }
+      
+      return new Response(JSON.stringify(errorResponse), {
         status: 500,
         headers: {
           'Content-Type': 'application/json',
