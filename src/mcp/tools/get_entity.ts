@@ -295,7 +295,6 @@ export async function handleGetEntity(
       entity,
       depth,
       result_count: resultCount,
-      count: resultCount, // Keep for backward compatibility
       results
     };
     
