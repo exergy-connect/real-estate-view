@@ -130,13 +130,23 @@ export function jmespathQueryToolDefinition() {
     inputSchema: {
       type: 'object',
       properties: {
+        root: {
+          type: 'string',
+          description: (
+            'Entity class to use as the root of the query. ' +
+            'Queries are executed against the set of all those entities, indexed by their primary key. ' +
+            'Entity names MUST match the model definition exactly.'
+          ),
+        },
         query: {
           type: 'string',
           description: (
             'JMESPath query expression, relative to the root. ' +
-            'Use object projection `.*` (not `[*]`). ' +
-            'Use lowercase for primary key values. ' +
-            'Entity names MUST match the model definition exactly.'
+            'Syntax: Use object projection `.*` for entities (not `[*]`). ' +
+            'Wrap projections in parentheses before filters: `(entity.*)[?filter]`. ' +
+            'For entity trees (with root): `(*)[?level == \`High\`]`. ' +
+            'For consolidated data: `data.state.*.cities[*].zipcodes[*].properties[*]`. ' +
+            'Use lowercase for primary key values. Entity names MUST match the model definition exactly.'
           ),
         },
         updated_prompt: {
@@ -154,17 +164,8 @@ export function jmespathQueryToolDefinition() {
             'Use this to associate queries with a session for tracking and follow-up queries.'
           ),
         },
-        root: {
-          type: 'string',
-          description: (
-            'Optional entity class to use as the root of the query. ' +
-            'When provided, queries are executed against the set of all those entities, indexed by their primary key. ' +
-            'When omitted, queries are executed against the full consolidated data tree. (e.g. "data.datacenter.vm")' +
-            'Entity names MUST match the model definition exactly.'
-          ),
-        },
       },
-      required: ['query', 'ai_reasoning', 'session_id'],
+      required: ['root', 'query', 'ai_reasoning', 'session_id'],
     },
   };
 }
@@ -176,9 +177,26 @@ export async function handleJmespathQuery(
   args: any,
   context: { env: any; ctx: any; origin: string }
 ): Promise<{ content: Array<{ type: string; text: string; isError?: boolean }>; ioMs: number; cpuMs: number; cacheStatus: any }> {
-  const { query, session_id, updated_prompt, ai_reasoning, root } = args;
+  let { query, session_id, updated_prompt, ai_reasoning, root } = args;
   
   try {
+    // Validate root parameter
+    if (!root || typeof root !== 'string' || root.trim() === '') {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            error: 'Invalid root parameter',
+            message: 'Root must be a non-empty string specifying the entity class',
+          }, null, 2),
+          isError: true,
+        }],
+        ioMs: 0,
+        cpuMs: 0,
+        cacheStatus: CacheStatus.ERROR,
+      };
+    }
+
     // Validate query parameter
     if (!query || typeof query !== 'string') {
       return {
@@ -196,16 +214,20 @@ export async function handleJmespathQuery(
       };
     }
 
+    // Auto-fix common syntax error: *[ should be (*)[
+    // Parentheses are required around object projection before applying filters
+    if (query.startsWith('*[')) {
+      query = '(*)' + query.substring(1);
+    }
+
     // Validate query syntax, skip for now
     // const validationError = validateJmespathQuery(query);
     // if (validationError) {
     //   return validationError;
     // }
 
-    // Load data - either entity file or consolidated data
-    const assetPath = root && typeof root === 'string'
-      ? `output/data/entities/${root}.json`
-      : "output/consolidated_data.json.gz";
+    // Load data from entity file (root is mandatory and non-empty)
+    const assetPath = `output/data/entities/${root}.json`;
     const assetUrl = new URL(assetPath, context.origin).toString();
     
     const dataResult = await loadCachedData(assetUrl, context.env, context.ctx, {
@@ -235,8 +257,7 @@ export async function handleJmespathQuery(
             error: errorMsg,
             error_type: errorType,
             help: 'See JMESPath documentation: https://jmespath.org/',
-            suggestion: 'Use get_model first to understand the data structure ' +
-                        '(see help://getting-started resource).',
+            suggestion: 'Use get_model first to understand the data structure',
           }, null, 2),
           isError: true,
         }],
