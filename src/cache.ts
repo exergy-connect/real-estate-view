@@ -4,6 +4,14 @@
 const L1_CACHE = new Map<string, { json: any; validatedAt: number; etag: string }>();
 
 /**
+ * Maximum number of timestamps to keep in cache metadata
+ * Limited to 16 due to Cloudflare Workers KV metadata size constraint of 1kB
+ * Each timestamp is stored as an integer (minutes since epoch), so 16 timestamps
+ * plus other metadata fields (cachedAt, etag, writeCount, effective_ttl_minutes) must fit within 1kB
+ */
+const MAX_TIMESTAMP_HISTORY = 16;
+
+/**
  * Fetcher function type for getCachedEntity
  * Returns data and etag, with data being null if content hasn't changed (304 response)
  * Can optionally return stale data when network fetch fails (only in MISS case)
@@ -76,31 +84,69 @@ export interface CacheParams {
 }
 
 /**
+ * Helper to create CacheParams with reasonable defaults
+ * @param required Required parameters (env, ctx, cacheKey, fetcher, parse)
+ * @param options Optional TTL and history count overrides
+ * @returns CacheParams with defaults applied
+ */
+export function createCacheParams(
+  required: {
+    env: any;
+    ctx: any;
+    cacheKey: string;
+    fetcher: EntityFetcher;
+    parse: boolean;
+  },
+  options?: {
+    initial_ttl_ms?: number;
+    max_ttl_ms?: number;
+    timestampHistoryCount?: number;
+  }
+): CacheParams {
+  const initial_ttl_ms = options?.initial_ttl_ms ?? 300 * 1000;      // Default: 5 minutes
+  const max_ttl_ms = options?.max_ttl_ms ?? initial_ttl_ms * 3;      // Default: 3x initial TTL
+  // Limit to MAX_TIMESTAMP_HISTORY due to 1kB metadata size constraint
+  const timestampHistoryCount = Math.min(options?.timestampHistoryCount ?? 3, MAX_TIMESTAMP_HISTORY);
+
+  return {
+    ...required,
+    initial_ttl_ms,
+    max_ttl_ms,
+    timestampHistoryCount
+  };
+}
+
+/**
  * Calculate effective TTL based on update timestamp history
  * Uses median interval between updates, clamped between initial_ttl_ms and max_ttl_ms
+ * Returns TTL in minutes (to match storage format)
  */
 function calculateEffectiveTTL(
-  timestamps: number[],
+  timestampsMinutes: number[],
   initial_ttl_ms: number,
   max_ttl_ms: number
 ): number {
-  if (timestamps.length < 2) {
-    // Not enough history, use initial TTL
-    return initial_ttl_ms;
+  if (timestampsMinutes.length < 2) {
+    // Not enough history, use initial TTL (convert ms to minutes)
+    return Math.floor(initial_ttl_ms / (60 * 1000));
   }
 
-  // Calculate intervals between consecutive timestamps
-  const intervals: number[] = [];
-  for (let i = 1; i < timestamps.length; i++) {
-    intervals.push(timestamps[i] - timestamps[i - 1]);
+  // Calculate intervals between consecutive timestamps (in minutes)
+  const intervalsMinutes: number[] = [];
+  for (let i = 1; i < timestampsMinutes.length; i++) {
+    intervalsMinutes.push(timestampsMinutes[i] - timestampsMinutes[i - 1]);
   }
 
   // Use median interval as the effective TTL
-  intervals.sort((a, b) => a - b);
-  const medianInterval = intervals[Math.floor(intervals.length / 2)];
+  intervalsMinutes.sort((a, b) => a - b);
+  const medianIntervalMinutes = intervalsMinutes[Math.floor(intervalsMinutes.length / 2)];
 
-  // Clamp between initial and max TTL
-  return Math.max(initial_ttl_ms, Math.min(max_ttl_ms, medianInterval));
+  // Convert TTL bounds from milliseconds to minutes for clamping
+  const initial_ttl_minutes = Math.floor(initial_ttl_ms / (60 * 1000));
+  const max_ttl_minutes = Math.floor(max_ttl_ms / (60 * 1000));
+
+  // Clamp between initial and max TTL (in minutes)
+  return Math.max(initial_ttl_minutes, Math.min(max_ttl_minutes, medianIntervalMinutes));
 }
 
 /**
@@ -117,7 +163,7 @@ async function updateCaches(
   rawData: string,
   etag: string,
   timestamp: number = Date.now(),
-  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_ms?: number } | null
+  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null
 ): Promise<any> {
   // Store in L1 cache in the requested format
   const l1Data = params.parse ? JSON.parse(rawData) : rawData;
@@ -130,13 +176,26 @@ async function updateCaches(
   // Initialize or update counter and timestamps from provided metadata
   const writeCount = (existingMetadata?.writeCount || 0) + 1;
   const updateTimestamps = existingMetadata?.updateTimestamps || [];
-  updateTimestamps.push(Math.floor(timestamp)); // Add current timestamp as int
-  // Keep only the last N timestamps
-  const lastTimestamps = updateTimestamps.slice(-params.timestampHistoryCount);
+  // Store timestamp in minutes (reduce storage size)
+  const timestampMinutes = Math.floor(timestamp / (60 * 1000));
+  updateTimestamps.push(timestampMinutes);
+  // Keep only the last N timestamps (limited by MAX_TIMESTAMP_HISTORY)
+  const maxTimestamps = Math.min(params.timestampHistoryCount, MAX_TIMESTAMP_HISTORY);
+  const lastTimestamps = updateTimestamps.slice(-maxTimestamps);
   
-  // Calculate effective TTL
-  let effective_ttl_ms: number | undefined;
-  effective_ttl_ms = calculateEffectiveTTL(lastTimestamps, params.initial_ttl_ms, params.max_ttl_ms);
+  // Calculate new effective TTL (in minutes)
+  const newEffectiveTTLMinutes = calculateEffectiveTTL(lastTimestamps, params.initial_ttl_ms, params.max_ttl_ms);
+  
+  // Initialize to initial TTL, or average with existing value when updating
+  const initial_ttl_minutes = Math.floor(params.initial_ttl_ms / (60 * 1000));
+  let effective_ttl_minutes: number;
+  if (existingMetadata?.effective_ttl_minutes !== undefined) {
+    // Average of new and old value when updating
+    effective_ttl_minutes = Math.floor((newEffectiveTTLMinutes + existingMetadata.effective_ttl_minutes) / 2);
+  } else {
+    // Initialize to initial TTL
+    effective_ttl_minutes = initial_ttl_minutes;
+  }
   
   // Store raw data in KV (always store as string)
   await params.env.CACHE_KV.put(params.cacheKey, rawData, { 
@@ -145,7 +204,7 @@ async function updateCaches(
       etag,
       writeCount,
       updateTimestamps: lastTimestamps,
-      effective_ttl_ms
+      effective_ttl_minutes
     }
   });
   
@@ -267,7 +326,7 @@ async function checkL2Cache(
     return null;
   }
 
-  const existingMetadata = metadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_ms?: number } | null;
+  const existingMetadata = metadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null;
   
   // Store in L1 cache in the requested format
   const l1Data = params.parse ? JSON.parse(value) : value;
@@ -275,8 +334,11 @@ async function checkL2Cache(
   // Calculate cache metadata
   const cachedAt = Number(existingMetadata?.cachedAt) || 0;
   const age = now - cachedAt;
-  // Use effective_ttl_ms from metadata if available, otherwise fall back to initial_ttl_ms
-  const effectiveTTL = existingMetadata?.effective_ttl_ms ?? params.initial_ttl_ms;
+  // Use effective_ttl_minutes from metadata if available, otherwise fall back to initial_ttl_ms
+  // Convert minutes to milliseconds for comparison with age (which is in ms)
+  const effectiveTTL = existingMetadata?.effective_ttl_minutes 
+    ? existingMetadata.effective_ttl_minutes * 60 * 1000 
+    : params.initial_ttl_ms;
   const isFresh = age < effectiveTTL;
   const kvEtag = existingMetadata?.etag || '';
 
@@ -359,7 +421,7 @@ async function handleMiss(
       // Fetcher returned fresh data (must be string) - store in caches
       // Get existing metadata to calculate effective TTL
       const { metadata: existingMetadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
-      const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_ms?: number } | null;
+      const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null;
       const l1Data = await updateCaches(
         params,
         fetchResult.data as string,
@@ -367,10 +429,15 @@ async function handleMiss(
         now,
         metadata
       );
-      // Calculate effective TTL for return value
+      // Calculate effective TTL for return value (convert minutes to milliseconds)
       const timestamps = metadata?.updateTimestamps || [];
-      const updatedTimestamps = [...timestamps, Math.floor(now)].slice(-params.timestampHistoryCount);
-      const effectiveTTL = calculateEffectiveTTL(updatedTimestamps, params.initial_ttl_ms, params.max_ttl_ms);
+      // Convert current timestamp to minutes
+      const nowMinutes = Math.floor(now / (60 * 1000));
+      // Limit to MAX_TIMESTAMP_HISTORY due to 1kB metadata size constraint
+      const maxTimestamps = Math.min(params.timestampHistoryCount, MAX_TIMESTAMP_HISTORY);
+      const updatedTimestamps = [...timestamps, nowMinutes].slice(-maxTimestamps);
+      const effectiveTTLMinutes = calculateEffectiveTTL(updatedTimestamps, params.initial_ttl_ms, params.max_ttl_ms);
+      const effectiveTTL = effectiveTTLMinutes * 60 * 1000; // Convert to milliseconds for return value
       // Return combined state: both L1 and L2 missed, fetched from network
       const combinedStatus = l1Status === CacheStatus.MISS_L1 
         ? CacheStatus.MISS_L1_MISS_L2 

@@ -13,7 +13,16 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   // Create a smart fetcher that handles ETag revalidation and Gzip decompression
   const fetcher = createSmartFetcher(env, assetUrl);
   
-  const result = await getCachedJSON({ env, ctx, cacheKey, initial_ttl_ms: INITIAL_TTL_MS, max_ttl_ms: MAX_TTL_MS, timestampHistoryCount: TIMESTAMP_HISTORY_COUNT, fetcher, parse: true }); // Parse JSON
+  const result = await getCachedJSON({
+    env,
+    ctx,
+    cacheKey,
+    initial_ttl_ms: INITIAL_TTL_MS,
+    max_ttl_ms: MAX_TTL_MS,
+    timestampHistoryCount: TIMESTAMP_HISTORY_COUNT,
+    fetcher,
+    parse: true
+  });
   
   return { data: result.data, cacheStatus: result.cacheStatus };
 }
