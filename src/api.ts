@@ -1,4 +1,5 @@
 import { getCachedJSON, CacheStatus, createSmartFetcher } from './cache';
+import { handleMCPRequest } from './mcp';
 
 // Define a simple type for our handlers
 type LoadCachedDataFn = () => Promise<any>;
@@ -79,33 +80,6 @@ async function getEntity(request: Request, env: any, id: string): Promise<{ enti
   return { entity, ioMs, cpuMs };
 }
 
-/**
- * Loads model JSON using getCachedJSON
- * Uses the new cache functions with ETag support and multi-layer caching
- */
-async function loadCachedModel(
-  env: any,
-  ctx: any,
-  baseUrl: string
-): Promise<{ model: string; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
-  const cacheKey = "consolidated_model.json";
-  const ttl_ms = 3600 * 1000; // 1 hour in milliseconds
-  const assetUrl = new URL("output/consolidated_model.json", baseUrl).toString();
-  
-  // Create a smart fetcher that handles ETag revalidation and Gzip decompression
-  const fetcher = createSmartFetcher(env, assetUrl);
-  
-  const ioStart = performance.now();
-  const result = await getCachedJSON({ env, ctx, cacheKey, ttl_ms, fetcher, parse: false }); // Don't parse JSON
-  const ioMs = performance.now() - ioStart;
-  
-  return {
-    model: result.data as string,
-    ioMs,
-    cpuMs: 0, // No CPU time needed for formatting
-    cacheStatus: result.cacheStatus
-  };
-}
 
 
 export const apiRoutes: Record<string, Handler> = {
@@ -399,59 +373,6 @@ export const apiRoutes: Record<string, Handler> = {
     }
   },
   "/api/mcp/sse": async (req, env, loadCachedData, startTime, ctx) => {
-    // Only allow POST requests for MCP tool calls
-    if (req.method !== 'POST') {
-      return createErrorResponse('Method not allowed. Use POST.', 405);
-    }
-    
-    try {
-      // Parse MCP tool call request
-      const requestData = await req.json();
-      const toolName = requestData.tool || requestData.name;
-      
-      if (!toolName) {
-        return createErrorResponse('Missing tool name', 400);
-      }
-
-      const { origin } = new URL(req.url);
-      const context = ctx || { waitUntil: (p: Promise<any>) => p };
-      
-      // Handle getModel tool
-      if (toolName === 'getModel') {
-        const { model, ioMs, cpuMs, cacheStatus } = await loadCachedModel(env, context, origin);
-        
-        const response = {
-          type: 'tool_response',
-          tool: 'getModel',
-          content: [
-            {
-              type: 'text',
-              text: model // model is already a JSON string, no need to stringify
-            }
-          ]
-        };
-        
-        return new Response(JSON.stringify(response), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Server-Timing': createServerTimingHeader(ioMs, cpuMs, cacheStatus),
-            ...getCorsHeaders()
-          }
-        });
-      } else {
-        // Unknown tool
-        return createErrorResponse(
-          `Unknown tool: ${toolName}`,
-          400,
-          `Available tools: getModel`
-        );
-      }
-    } catch (error) {
-      return createErrorResponse(
-        'Failed to process MCP tool call',
-        500,
-        error instanceof Error ? error.message : String(error)
-      );
-    }
+    return handleMCPRequest(req, env, ctx);
   }
 };
