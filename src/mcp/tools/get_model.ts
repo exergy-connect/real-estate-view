@@ -77,11 +77,56 @@ export async function handleGetModel(
   context: { env: any; ctx: any; origin: string }
 ): Promise<{ content: Array<{ type: string; text: string }>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
   const result = await loadCachedModel(context.env, context.ctx, context.origin);
+  
+  // Parse the model JSON
+  const modelSchema = JSON.parse(result.model);
+  
+  // Generate or reuse session_id
+  const providedSessionId = args.session_id;
+  const isNewSession = !providedSessionId;
+  const sessionId = providedSessionId || crypto.randomUUID();
+  
+  // Build response structure like Python version
+  const response: any = {
+    session_id: sessionId
+  };
+  
+  // For new sessions, include model metadata and data_format
+  if (isNewSession) {
+    response.model = {
+      name: modelSchema.title || "Consolidated Data Model",
+      version: modelSchema.version || "1.0.0",
+      description: modelSchema.description || "Consolidated entity schemas from data model files"
+    };
+    response.data_format = {
+      primary_key_normalization: (
+        "CRITICAL: Primary key values in the stored data are ALREADY normalized to lowercase. " +
+        "When querying, use lowercase values directly (e.g., 'acme corp' not 'Acme Corp'). " +
+        "Do NOT apply to_lower() to primary keys in queries - the data is already normalized."
+      ),
+      field_name_normalization: (
+        "Foreign key field names use underscores instead of dots " +
+        "(e.g., 'server_name' instead of 'server.name')"
+      )
+    };
+  }
+  
+  // Include the model schema ($defs and properties)
+  // For depth=0 (default), we could filter to just entity map, but for simplicity
+  // we'll return the full schema structure
+  response.$schema = modelSchema.$schema;
+  response.title = modelSchema.title;
+  response.description = modelSchema.description;
+  response.$defs = modelSchema.$defs;
+  response.type = modelSchema.type;
+  response.properties = modelSchema.properties;
+  response.additionalProperties = modelSchema.additionalProperties;
+  
   return {
     content: [
       {
         type: 'text',
-        text: result.model
+        text: JSON.stringify(response, null, 2)
       }
     ],
     ioMs: result.ioMs,
