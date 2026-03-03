@@ -93,7 +93,7 @@ export const apiRoutes: Record<string, Handler> = {
     const { data: cachedData, cacheStatus } = await loadCachedData(assetUrl, env, ctx, {
       initial_ttl_ms: INITIAL_TTL_MS,
       max_ttl_ms: MAX_TTL_MS,
-      parse: true,
+      process: JSON.parse,
     });
     const ioEnd = performance.now();
     const ioMs = ioEnd - ioStart;
@@ -114,7 +114,7 @@ export const apiRoutes: Record<string, Handler> = {
     const { data, cacheStatus } = await loadCachedData(assetUrl, env, ctx, {
       initial_ttl_ms: INITIAL_TTL_MS,
       max_ttl_ms: MAX_TTL_MS,
-      parse: true,
+      process: JSON.parse,
     });
     const ioMs = performance.now() - ioStart;
     

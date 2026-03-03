@@ -6,6 +6,119 @@ const INITIAL_TTL_MS = 300 * 1000; // 5 minutes
 const MAX_TTL_MS = 3600 * 1000;    // 1 hour
 
 /**
+ * Validate JMESPath query syntax
+ * @param query The query string to validate
+ * @returns Error response object if invalid, null if valid
+ */
+function validateJmespathQuery(query: string): { content: Array<{ type: string; text: string; isError?: boolean }>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus } | null {
+  // Check if query uses array projection [*] for entity projections (not allowed)
+  // Note: [*] is incorrect for entity projections (entities are dict-indexed, not arrays)
+  // But [*] is valid for array/composite fields (e.g., *.tags[*], *.field_name[*])
+  // Allow | [] which is correct (converts object projection to array)
+  // Patterns to reject:
+  //   - entity[*] (entity name followed by [*])
+  //   - .*[*] (object projection followed by [*], unless it's part of a field access pattern)
+  // Patterns to allow:
+  //   - *.field[*] or .field[*] (field access followed by [*])
+  //   - | [] (pipe to array conversion)
+  if (query.includes('[*]')) {
+    // Check for pipe to array conversion (always allowed)
+    if (/\|\s*\[\]/.test(query)) {
+      // This is allowed, skip validation
+    } else {
+      // Find all [*] occurrences and check their context
+      const arrayProjectionMatches = query.matchAll(/\[\*/g);
+      let hasInvalidProjection = false;
+      
+      for (const match of arrayProjectionMatches) {
+        const index = match.index!;
+        const before = query.substring(Math.max(0, index - 20), index);
+        
+        // Check if this [*] follows a field access pattern (allowed)
+        // Pattern: .field[*] or *.field[*] where field is a word
+        const fieldArrayPattern = /\.\w+\[\*\]$/;
+        if (fieldArrayPattern.test(before + '[*]')) {
+          continue; // This is a field array access, allowed
+        }
+        
+        // Check if this [*] follows an entity name (reject)
+        // Pattern: entity[*] where entity is a word not preceded by .
+        const entityArrayPattern = /(?:^|[^.])\w+\[\*\]$/;
+        if (entityArrayPattern.test(before + '[*]')) {
+          hasInvalidProjection = true;
+          break;
+        }
+        
+        // Check if this [*] follows object projection .* (reject unless it's part of field access)
+        // Pattern: .*[*] that is not immediately preceded by a field name
+        const objectProjectionArrayPattern = /\.\*\[\*\]$/;
+        if (objectProjectionArrayPattern.test(before + '[*]')) {
+          hasInvalidProjection = true;
+          break;
+        }
+      }
+      
+      if (hasInvalidProjection) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: 'Invalid query syntax',
+              message: (
+                'Entities are stored as dictionaries indexed by primary keys, not arrays. ' +
+                'Use object projection `.*` instead of array projection `[*]` for entities.\n\n' +
+                `Your query: ${query}\n` +
+                'Example: Change `datacenter[*].name` to `datacenter.*.name`\n' +
+                'Example: Change `datacenter[*].clusters[*].servers[?name==\'srv4\']` ' +
+                'to `datacenter.*.clusters.*.servers[?name==\'srv4\']`\n\n' +
+                'Note: `| []` is correct (converts object projection to array). ' +
+                'Note: `*.field[*]` or `.field[*]` is correct for array/composite fields. ' +
+                'Use query_examples tool to see correct syntax for your data model.'
+              ),
+              error_type: 'SyntaxError',
+            }, null, 2),
+            isError: true,
+          }],
+          ioMs: 0,
+          cpuMs: 0,
+          cacheStatus: CacheStatus.ERROR,
+        };
+      }
+    }
+  }
+
+  // Check if query uses object projection without parentheses before filter
+  // Pattern: entity.*[?filter] should be (entity.*)[?filter]
+  const objectProjectionPattern = /\w+\.\*\[/;
+  const parenthesesPattern = /\(\w+\.\*\)\[/;
+  if (objectProjectionPattern.test(query) && !parenthesesPattern.test(query)) {
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          error: 'Invalid query syntax',
+          message: (
+            'JMESPath requires parentheses around object projections before applying filters. ' +
+            'Wrap the projection in parentheses before the filter.\n\n' +
+            `Your query: ${query}\n` +
+            'Example: Change `vm.*[?contains(name, \'emqx\')]` ' +
+            'to `(vm.*)[?contains(name, \'emqx\')]`\n\n' +
+            'The pattern `entity.*[?filter]` doesn\'t work. Use `(entity.*)[?filter]` instead.'
+          ),
+          error_type: 'SyntaxError',
+        }, null, 2),
+        isError: true,
+      }],
+      ioMs: 0,
+      cpuMs: 0,
+      cacheStatus: CacheStatus.ERROR,
+    };
+  }
+
+  return null; // Query is valid
+}
+
+/**
  * Tool definition for jmespath_query
  */
 export function jmespathQueryToolDefinition() {
@@ -20,7 +133,7 @@ export function jmespathQueryToolDefinition() {
         query: {
           type: 'string',
           description: (
-            'JMESPath query expression. ' +
+            'JMESPath query expression, relative to the root. ' +
             'Use object projection `.*` (not `[*]`). ' +
             'Use lowercase for primary key values. ' +
             'Entity names MUST match the model definition exactly.'
@@ -41,6 +154,15 @@ export function jmespathQueryToolDefinition() {
             'Use this to associate queries with a session for tracking and follow-up queries.'
           ),
         },
+        root: {
+          type: 'string',
+          description: (
+            'Optional entity class to use as the root of the query. ' +
+            'When provided, queries are executed against the set of all those entities, indexed by their primary key. ' +
+            'When omitted, queries are executed against the full consolidated data tree. (e.g. "data.datacenter.vm")' +
+            'Entity names MUST match the model definition exactly.'
+          ),
+        },
       },
       required: ['query', 'ai_reasoning', 'session_id'],
     },
@@ -54,7 +176,7 @@ export async function handleJmespathQuery(
   args: any,
   context: { env: any; ctx: any; origin: string }
 ): Promise<{ content: Array<{ type: string; text: string; isError?: boolean }>; ioMs: number; cpuMs: number; cacheStatus: any }> {
-  const { query, session_id, updated_prompt, ai_reasoning } = args;
+  const { query, session_id, updated_prompt, ai_reasoning, root } = args;
   
   try {
     // Validate query parameter
@@ -74,71 +196,22 @@ export async function handleJmespathQuery(
       };
     }
 
-    // Check if query uses array projection [*] and suggest correction
-    // Note: [*] is always incorrect for entity projections (entities are dict-indexed, not arrays)
-    // Allow field[] since list fields may legitimately use array projection
-    // Allow | [] which is correct (converts object projection to array)
-    if (query.includes('[*]')) {
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            error: 'Invalid query syntax',
-            message: (
-              'Data is stored as dictionaries indexed by primary keys, not arrays. ' +
-              'Use object projection `.*` instead of array projection `[*]`.\n\n' +
-              `Your query: ${query}\n` +
-              'Example: Change `datacenter[*].name` to `datacenter.*.name`\n' +
-              'Example: Change `datacenter[*].clusters[*].servers[?name==\'srv4\']` ' +
-              'to `datacenter.*.clusters.*.servers[?name==\'srv4\']`\n\n' +
-              'Note: `| []` is correct (converts object projection to array). ' +
-              'Note: `field[]` may be correct for list fields. ' +
-              'Use query_examples tool to see correct syntax for your data model.'
-            ),
-            error_type: 'SyntaxError',
-          }, null, 2),
-          isError: true,
-        }],
-        ioMs: 0,
-        cpuMs: 0,
-        cacheStatus: CacheStatus.ERROR,
-      };
-    }
+    // Validate query syntax, skip for now
+    // const validationError = validateJmespathQuery(query);
+    // if (validationError) {
+    //   return validationError;
+    // }
 
-    // Check if query uses object projection without parentheses before filter
-    // Pattern: entity.*[?filter] should be (entity.*)[?filter]
-    const objectProjectionPattern = /\w+\.\*\[/;
-    const parenthesesPattern = /\(\w+\.\*\)\[/;
-    if (objectProjectionPattern.test(query) && !parenthesesPattern.test(query)) {
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            error: 'Invalid query syntax',
-            message: (
-              'JMESPath requires parentheses around object projections before applying filters. ' +
-              'Wrap the projection in parentheses before the filter.\n\n' +
-              `Your query: ${query}\n` +
-              'Example: Change `vm.*[?contains(name, \'emqx\')]` ' +
-              'to `(vm.*)[?contains(name, \'emqx\')]`\n\n' +
-              'The pattern `entity.*[?filter]` doesn\'t work. Use `(entity.*)[?filter]` instead.'
-            ),
-            error_type: 'SyntaxError',
-          }, null, 2),
-          isError: true,
-        }],
-        ioMs: 0,
-        cpuMs: 0,
-        cacheStatus: CacheStatus.ERROR,
-      };
-    }
-
-    // Load consolidated data
-    const assetUrl = new URL("output/consolidated_data.json.gz", context.origin).toString();
+    // Load data - either entity file or consolidated data
+    const assetPath = root && typeof root === 'string'
+      ? `output/data/entities/${root}.json`
+      : "output/consolidated_data.json.gz";
+    const assetUrl = new URL(assetPath, context.origin).toString();
+    
     const dataResult = await loadCachedData(assetUrl, context.env, context.ctx, {
       initial_ttl_ms: INITIAL_TTL_MS,
       max_ttl_ms: MAX_TTL_MS,
-      parse: true,
+      process: JSON.parse,
     });
     const data = dataResult.data;
 
@@ -199,7 +272,6 @@ export async function handleJmespathQuery(
             result: null,
             result_type: 'NoneType',
             result_count: 0,
-            count: 0, // Keep for backward compatibility
             diagnostics: {
               entity_type: entityType,
               entity_exists: true,
@@ -251,8 +323,7 @@ export async function handleJmespathQuery(
           : typeof result === 'object' 
             ? 'Object' 
             : typeof result,
-      result_count: resultCount,
-      count: resultCount, // Keep for backward compatibility
+      result_count: resultCount
     };
 
     return {

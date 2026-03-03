@@ -57,14 +57,14 @@ export enum CacheStatus {
  * Type for final cache statuses (excludes intermediate states)
  * Intermediate states (MISS_L1, STALE_L1) are not stored in L2 metadata to optimize storage
  */
-type FinalCacheStatus = Exclude<CacheStatus, CacheStatus.MISS_L1 | CacheStatus.STALE_L1>;
+export type FinalCacheStatus = Exclude<CacheStatus, CacheStatus.MISS_L1 | CacheStatus.STALE_L1>;
 
 /**
  * Global cache statistics - tracks counters for final cache statuses only
  * Intermediate states (MISS_L1, STALE_L1) are not counted to optimize L2 metadata storage
  * Persists in warm Worker isolates RAM
  */
-const CACHE_STATS: Record<FinalCacheStatus, number> = {
+export const CACHE_STATS: Record<FinalCacheStatus, number> = {
   [CacheStatus.HIT_L1_RAM]: 0,
   [CacheStatus.MISS_L1_HIT_L2]: 0,
   [CacheStatus.MISS_L1_STALE_L2]: 0,
@@ -118,19 +118,6 @@ function getCacheStatsSnapshot(): number[] {
 }
 
 /**
- * Get current global cache statistics (for observability tools)
- * Returns all CacheStatus values, with intermediate states set to 0
- */
-export function getCurrentCacheStats(): Record<CacheStatus, number> {
-  return {
-    [CacheStatus.MISS_L1]: 0,
-    [CacheStatus.STALE_L1]: 0,
-    ...CACHE_STATS
-  };
-}
-
-
-/**
  * Merge stats from metadata into global stats (only once, when first encountered)
  * @param metadataStats Simple array of numbers from metadata (as read from KV metadata)
  * Order matches Object.keys(CACHE_STATS) - only final states (excludes intermediate states)
@@ -167,7 +154,7 @@ export interface GetCachedJSONResult {
   ttl_ms: number;
   /** L1 cache entry (present when L1 cache has data) */
   l1Entry?: { json: any; validatedAt: number; etag: string };
-  /** The cached JSON data (parsed object or raw string depending on parse parameter) */
+  /** The cached JSON data (processed by the process function) */
   data?: any;
 }
 
@@ -181,13 +168,13 @@ export interface CacheParams {
   initial_ttl_ms: number;
   max_ttl_ms: number;
   timestampHistoryCount: number;
-  parse: boolean;
+  process: (raw: string) => any;
   fetcher: EntityFetcher;
 }
 
 /**
  * Helper to create CacheParams with reasonable defaults
- * @param required Required parameters (env, ctx, cacheKey, fetcher, parse)
+ * @param required Required parameters (env, ctx, cacheKey, fetcher, process)
  * @param options Optional TTL and history count overrides
  * @returns CacheParams with defaults applied
  */
@@ -197,7 +184,7 @@ export function createCacheParams(
     ctx: any;
     cacheKey: string;
     fetcher: EntityFetcher;
-    parse: boolean;
+    process: (raw: string) => any;
   },
   options?: {
     initial_ttl_ms?: number;
@@ -264,7 +251,7 @@ function calculateEffectiveTTL(
  * @param etag ETag value
  * @param timestamp Optional timestamp (defaults to Date.now())
  * @param existingMetadata Optional existing metadata to update write count and timestamps
- * @returns The formatted data (parsed if parse=true, raw string if parse=false)
+ * @returns The formatted data (processed by params.process function)
  */
 async function updateCaches(
   params: CacheParams,
@@ -274,7 +261,7 @@ async function updateCaches(
   existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: number[] } | null
 ): Promise<any> {
   // Store in L1 cache in the requested format
-  const l1Data = params.parse ? JSON.parse(rawData) : rawData;
+  const l1Data = params.process(rawData);
   L1_CACHE.set(params.cacheKey, { 
     json: l1Data, 
     validatedAt: timestamp, 
@@ -389,10 +376,13 @@ function checkL1Cache(
   }
 
   // Debug assert: validate cached format matches requested format
-  const isCachedParsed = typeof warm.json !== 'string';
-  if (params.parse !== isCachedParsed) {
+  // Test the process function with a dummy string to determine expected output type
+  const isCachedString = typeof warm.json === 'string';
+  const testResult = params.process('test');
+  const expectsString = typeof testResult === 'string';
+  if (isCachedString !== expectsString) {
     throw new Error(
-      `Cache format mismatch for ${params.cacheKey}: requested ${params.parse ? 'parsed' : 'raw'}, but cached ${isCachedParsed ? 'parsed' : 'raw'}`
+      `Cache format mismatch for ${params.cacheKey}: cached ${isCachedString ? 'string' : 'object/array'}, but process function returns ${expectsString ? 'string' : 'object/array'}`
     );
   }
 
@@ -470,7 +460,7 @@ async function checkL2Cache(
   mergeStatsFromMetadata(existingMetadata?.cacheStats);
   
   // Store in L1 cache in the requested format
-  const l1Data = params.parse ? JSON.parse(value) : value;
+  const l1Data = params.process(value);
 
   // Calculate cache metadata
   const cachedAt = Number(existingMetadata?.cachedAt) || 0;
@@ -628,7 +618,7 @@ export async function loadCachedData(
   options?: {
     initial_ttl_ms?: number;
     max_ttl_ms?: number;
-    parse?: boolean;
+    process?: (raw: string) => any;
     timestampHistoryCount?: number;
   }
 ): Promise<{ data: any; ioMs: number; cacheStatus: CacheStatus }> {
@@ -638,7 +628,7 @@ export async function loadCachedData(
   const {
     initial_ttl_ms = 300 * 1000, // 5 minutes default
     max_ttl_ms = 3600 * 1000,    // 1 hour default
-    parse = true,
+    process = JSON.parse,         // Default: parse JSON
     timestampHistoryCount = 5,
   } = options || {};
   
@@ -646,7 +636,7 @@ export async function loadCachedData(
   const fetcher = createSmartFetcher(env, urlString);
   
   const params = createCacheParams(
-    { env, ctx, cacheKey, fetcher, parse },
+    { env, ctx, cacheKey, fetcher, process },
     { initial_ttl_ms, max_ttl_ms, timestampHistoryCount }
   );
   

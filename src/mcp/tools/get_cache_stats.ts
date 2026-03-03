@@ -1,4 +1,4 @@
-import { CacheStatus, getCurrentCacheStats, mergeStatsFromMetadata } from '../../cache';
+import { CacheStatus, FinalCacheStatus, mergeStatsFromMetadata, CACHE_STATS } from '../../cache';
 
 /**
  * Tool definition for get_cache_stats
@@ -95,7 +95,7 @@ export async function handleGetCacheStats(
     const allSnapshots: Array<{
       key: string;
       timestamp: number;
-      stats: Record<CacheStatus, number>;
+      statsArray: number[];
       maxValue: number;
     }> = [];
 
@@ -126,47 +126,12 @@ export async function handleGetCacheStats(
       const cachedAt = (metadata as any)?.cachedAt || 0;
       
       if (Array.isArray(cacheStatsArray) && cacheStatsArray.every((v: any) => typeof v === 'number')) {
-        // Convert simple number array to Record for easier handling
-        // Array contains only final states (order matches Object.keys(CACHE_STATS) in cache.ts)
-        // Initialize all CacheStatus values to 0, then populate final states from array
-        const stats: Record<CacheStatus, number> = {
-          [CacheStatus.MISS_L1]: 0,
-          [CacheStatus.STALE_L1]: 0,
-          [CacheStatus.HIT_L1_RAM]: 0,
-          [CacheStatus.MISS_L1_HIT_L2]: 0,
-          [CacheStatus.MISS_L1_STALE_L2]: 0,
-          [CacheStatus.MISS_L1_MISS_L2]: 0,
-          [CacheStatus.STALE_L1_HIT_L2]: 0,
-          [CacheStatus.STALE_L1_STALE_L2]: 0,
-          [CacheStatus.STALE_L1_MISS_L2]: 0,
-          [CacheStatus.STALE_REVALIDATING]: 0,
-          [CacheStatus.ERROR]: 0
-        };
-        
-        // Final states in the order they appear in CACHE_STATS (excludes intermediate states)
-        const finalStates: CacheStatus[] = [
-          CacheStatus.HIT_L1_RAM,
-          CacheStatus.MISS_L1_HIT_L2,
-          CacheStatus.MISS_L1_STALE_L2,
-          CacheStatus.MISS_L1_MISS_L2,
-          CacheStatus.STALE_L1_HIT_L2,
-          CacheStatus.STALE_L1_STALE_L2,
-          CacheStatus.STALE_L1_MISS_L2,
-          CacheStatus.STALE_REVALIDATING,
-          CacheStatus.ERROR
-        ];
-        
-        let maxValue = 0;
-        for (let i = 0; i < cacheStatsArray.length && i < finalStates.length; i++) {
-          const status = finalStates[i];
-          const value = cacheStatsArray[i] || 0;
-          stats[status] = value;
-          maxValue = Math.max(maxValue, value);
-        }
+        // Keep the array as-is (order matches Object.keys(CACHE_STATS) in cache.ts - only final states)
+        const maxValue = Math.max(...cacheStatsArray, 0);
         allSnapshots.push({
           key,
           timestamp: cachedAt,
-          stats,
+          statsArray: cacheStatsArray,
           maxValue
         });
       }
@@ -192,35 +157,19 @@ export async function handleGetCacheStats(
 
     // Merge selected snapshot into global stats using mergeStatsFromMetadata
     if (selectedSnapshot) {
-      // Convert selected snapshot stats to simple number array for mergeStatsFromMetadata
-      // Order matches Object.keys(CACHE_STATS) in cache.ts - only final states
-      const finalStates: CacheStatus[] = [
-        CacheStatus.HIT_L1_RAM,
-        CacheStatus.MISS_L1_HIT_L2,
-        CacheStatus.MISS_L1_STALE_L2,
-        CacheStatus.MISS_L1_MISS_L2,
-        CacheStatus.STALE_L1_HIT_L2,
-        CacheStatus.STALE_L1_STALE_L2,
-        CacheStatus.STALE_L1_MISS_L2,
-        CacheStatus.STALE_REVALIDATING,
-        CacheStatus.ERROR
-      ];
-      const statsArray: number[] = finalStates.map(status => selectedSnapshot.stats[status] || 0);
-      mergeStatsFromMetadata(statsArray);
+      // Use the original array directly (already in the correct format)
+      mergeStatsFromMetadata(selectedSnapshot.statsArray);
     }
 
     // Get the merged stats from global CACHE_STATS
-    const mergedStats = getCurrentCacheStats();
+    const mergedStats = CACHE_STATS;
     const maxValue = Math.max(...Object.values(mergedStats));
 
     // Calculate global cache statistics from the merged stats
     let globalCacheStats: any = null;
     {
-      // Initialize all status counters for display
-      const allStats: Record<CacheStatus, number> = {} as Record<CacheStatus, number>;
-      for (const status of Object.values(CacheStatus)) {
-        allStats[status as CacheStatus] = mergedStats[status as CacheStatus] || 0;
-      }
+      // Use only final states for reporting (excludes intermediate states)
+      const allStats: Record<FinalCacheStatus, number> = { ...mergedStats };
 
       // Calculate total cache operations
       const totalOps = Object.values(allStats).reduce((sum, count) => sum + count, 0);

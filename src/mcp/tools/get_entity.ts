@@ -63,7 +63,7 @@ export async function loadCachedEntity(
   const result = await loadCachedData(assetUrl, env, ctx, {
     initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
     max_ttl_ms: 7200 * 1000, // 2 hours in milliseconds
-    parse: true,
+    process: JSON.parse,
     timestampHistoryCount: 3,
   });
   

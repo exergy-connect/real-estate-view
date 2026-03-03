@@ -54,7 +54,7 @@ export async function loadCachedModel(
   const result = await loadCachedData(assetUrl, env, ctx, {
     initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
     max_ttl_ms: 8 * 3600 * 1000, // 8 hours
-    parse: false,
+    process: (s) => s, // Keep as string (identity function)
   });
   
   return {
