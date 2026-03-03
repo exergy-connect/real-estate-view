@@ -7,7 +7,7 @@ const L1_CACHE = new Map<string, { json: any; validatedAt: number; etag: string 
  * Maximum number of timestamps to keep in cache metadata
  * Limited to 16 due to Cloudflare Workers KV metadata size constraint of 1kB
  * Each timestamp is stored as an integer (minutes since epoch), so 16 timestamps
- * plus other metadata fields (cachedAt, etag, writeCount, effective_ttl_minutes) must fit within 1kB
+ * plus other metadata fields (cachedAt, etag, writeCount, effective_ttl_minutes, cacheStats) must fit within 1kB
  */
 const MAX_TIMESTAMP_HISTORY = 16;
 
@@ -51,6 +51,82 @@ export enum CacheStatus {
   
   /** Error occurred during cache operation */
   ERROR = 'ERROR'
+}
+
+/**
+ * Global cache statistics - tracks counters for each cache status
+ * Persists in warm Worker isolates RAM
+ */
+const CACHE_STATS: Record<CacheStatus, number> = {
+  [CacheStatus.HIT_L1_RAM]: 0,
+  [CacheStatus.MISS_L1]: 0,
+  [CacheStatus.STALE_L1]: 0,
+  [CacheStatus.MISS_L1_HIT_L2]: 0,
+  [CacheStatus.MISS_L1_STALE_L2]: 0,
+  [CacheStatus.MISS_L1_MISS_L2]: 0,
+  [CacheStatus.STALE_L1_HIT_L2]: 0,
+  [CacheStatus.STALE_L1_STALE_L2]: 0,
+  [CacheStatus.STALE_L1_MISS_L2]: 0,
+  [CacheStatus.STALE_REVALIDATING]: 0,
+  [CacheStatus.ERROR]: 0
+};
+
+/**
+ * Global flag to track if stats have been merged from KV metadata
+ * Prevents double-counting - stats are merged once when first encountered
+ */
+let STATS_MERGED_FROM_KV = false;
+
+/**
+ * Increment cache statistics counter for a given status
+ */
+function incrementCacheStats(status: CacheStatus): void {
+  CACHE_STATS[status] = (CACHE_STATS[status] || 0) + 1;
+}
+
+/**
+ * Helper to increment cache stats and return a result
+ * Combines the common pattern of incrementing stats and returning a GetCachedJSONResult
+ */
+function returnWithStats(
+  status: CacheStatus,
+  result: Omit<GetCachedJSONResult, 'cacheStatus'>
+): GetCachedJSONResult {
+  incrementCacheStats(status);
+  return {
+    cacheStatus: status,
+    ...result
+  };
+}
+
+/**
+ * Get a snapshot of current cache statistics as an array of [status, count] tuples
+ * More compact than object format for metadata storage
+ */
+function getCacheStatsSnapshot(): Array<[CacheStatus, number]> {
+  return Object.entries(CACHE_STATS).map(([status, count]) => [status as CacheStatus, count]) as Array<[CacheStatus, number]>;
+}
+
+/**
+ * Merge stats from metadata into global stats (only once, when first encountered)
+ * @param metadataStats Array of [status, count] tuples from metadata
+ */
+function mergeStatsFromMetadata(
+  metadataStats?: Array<[CacheStatus, number]> | null
+): void {
+  if (!metadataStats || STATS_MERGED_FROM_KV) {
+    return;
+  }
+  
+  // Merge stats from metadata array into global stats
+  for (const [status, count] of metadataStats) {
+    if (status in CACHE_STATS) {
+      CACHE_STATS[status] = (CACHE_STATS[status] || 0) + (count || 0);
+    }
+  }
+  
+  // Mark stats as merged
+  STATS_MERGED_FROM_KV = true;
 }
 
 /**
@@ -167,7 +243,7 @@ async function updateCaches(
   rawData: string,
   etag: string,
   timestamp: number = Date.now(),
-  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null
+  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null
 ): Promise<any> {
   // Store in L1 cache in the requested format
   const l1Data = params.parse ? JSON.parse(rawData) : rawData;
@@ -201,6 +277,9 @@ async function updateCaches(
     effective_ttl_minutes = initial_ttl_minutes;
   }
   
+  // Get current stats snapshot to store in metadata
+  const cacheStatsSnapshot = getCacheStatsSnapshot();
+  
   // Store raw data in KV (always store as string)
   await params.env.CACHE_KV.put(params.cacheKey, rawData, { 
     metadata: { 
@@ -208,7 +287,8 @@ async function updateCaches(
       etag,
       writeCount,
       updateTimestamps: lastTimestamps,
-      effective_ttl_minutes
+      effective_ttl_minutes,
+      cacheStats: cacheStatsSnapshot
     }
   });
   
@@ -269,10 +349,7 @@ function checkL1Cache(
 ): GetCachedJSONResult {
   const warm = L1_CACHE.get(params.cacheKey);
   if (!warm) {
-    return {
-      cacheStatus: CacheStatus.MISS_L1,
-      ttl_ms: 0
-    };
+    return returnWithStats(CacheStatus.MISS_L1, { ttl_ms: 0 });
   }
 
   // Debug assert: validate cached format matches requested format
@@ -286,18 +363,16 @@ function checkL1Cache(
   const age = now - warm.validatedAt;
   // Use initial_ttl_ms for L1 cache checks (L1 doesn't have metadata)
   if (age >= params.initial_ttl_ms) {
-    return {
-      cacheStatus: CacheStatus.STALE_L1,
+    return returnWithStats(CacheStatus.STALE_L1, {
       ttl_ms: 0,
       l1Entry: warm
-    };
+    });
   }
 
-  return {
-    cacheStatus: CacheStatus.HIT_L1_RAM,
+  return returnWithStats(CacheStatus.HIT_L1_RAM, {
     ttl_ms: params.initial_ttl_ms - age,
     l1Entry: warm
-  };
+  });
 }
 
 /**
@@ -309,7 +384,7 @@ function checkL1Cache(
 function triggerBackgroundRefresh(
   params: CacheParams,
   etag: string,
-  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null
+  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null
 ): void {
   params.ctx.waitUntil((async () => {
     try {
@@ -342,16 +417,18 @@ async function checkL2Cache(
     // L2 MISS: Return stale L1 data if available, trigger background refresh
     if (l1Status === CacheStatus.STALE_L1 && l1Entry) {
       triggerBackgroundRefresh(params, l1Entry.etag, null);
-      return {
-        cacheStatus: CacheStatus.STALE_L1_MISS_L2,
+      return returnWithStats(CacheStatus.STALE_L1_MISS_L2, {
         ttl_ms: 0,
         data: l1Entry.json
-      };
+      });
     }
     return null;
   }
 
-  const existingMetadata = metadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null;
+  const existingMetadata = metadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null;
+  
+  // Merge stats from metadata into global stats (only once, when first encountered)
+  mergeStatsFromMetadata(existingMetadata?.cacheStats);
   
   // Store in L1 cache in the requested format
   const l1Data = params.parse ? JSON.parse(value) : value;
@@ -384,11 +461,10 @@ async function checkL2Cache(
     const combinedStatus = l1Status === CacheStatus.MISS_L1 
       ? CacheStatus.MISS_L1_HIT_L2 
       : CacheStatus.STALE_L1_HIT_L2;
-    return {
-      cacheStatus: combinedStatus,
+    return returnWithStats(combinedStatus, {
       ttl_ms: effectiveTTL - age,
       data: l1Data
-    };
+    });
   }
 
   // STALE: Serve old data, revalidate in background
@@ -398,7 +474,7 @@ async function checkL2Cache(
   const combinedStatus = l1Status === CacheStatus.MISS_L1 
     ? CacheStatus.MISS_L1_STALE_L2 
     : CacheStatus.STALE_L1_STALE_L2;
-  return { cacheStatus: combinedStatus, ttl_ms: 0, data: l1Data };
+  return returnWithStats(combinedStatus, { ttl_ms: 0, data: l1Data });
 }
 
 /**
@@ -417,11 +493,10 @@ async function handleMiss(
   // Note: STALE_L1_MISS_L2 is handled in checkL2Cache, so this should only be MISS_L1_MISS_L2
   // But we keep the check for defensive programming
   if (l1Status === CacheStatus.STALE_L1 && l1) {
-    return {
-      cacheStatus: CacheStatus.STALE_L1_MISS_L2,
+    return returnWithStats(CacheStatus.STALE_L1_MISS_L2, {
       ttl_ms: 0,
       data: l1.json
-    };
+    });
   }
 
   // Wait for network response (MISS_L1_MISS_L2 case)
@@ -432,7 +507,17 @@ async function handleMiss(
   // Fetcher returned fresh data (must be string) - store in caches
   // Get existing metadata to calculate effective TTL
   const { metadata: existingMetadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
-  const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null;
+  const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null;
+  
+  // Merge stats from metadata into global stats (only once, when first encountered)
+  mergeStatsFromMetadata(metadata?.cacheStats);
+  
+  // Calculate combined status and increment stats before updateCaches
+  const combinedStatus = l1Status === CacheStatus.MISS_L1 
+    ? CacheStatus.MISS_L1_MISS_L2 
+    : CacheStatus.STALE_L1_MISS_L2;
+  incrementCacheStats(combinedStatus);
+  
   const l1Data = await updateCaches(
     params,
     fetchResult.data as string,
@@ -441,23 +526,9 @@ async function handleMiss(
     metadata
   );
   
-  // Calculate effective TTL for return value (convert minutes to milliseconds)
-  const timestamps = metadata?.updateTimestamps || [];
-  // Convert current timestamp to minutes
-  const nowMinutes = Math.floor(now / (60 * 1000));
-  // Limit to MAX_TIMESTAMP_HISTORY due to 1kB metadata size constraint
-  const maxTimestamps = Math.min(params.timestampHistoryCount, MAX_TIMESTAMP_HISTORY);
-  const updatedTimestamps = [...timestamps, nowMinutes].slice(-maxTimestamps);
-  const effectiveTTLMinutes = calculateEffectiveTTL(updatedTimestamps, params.initial_ttl_ms, params.max_ttl_ms, true);
-  let effectiveTTL = effectiveTTLMinutes * 60 * 1000; // Convert to milliseconds for return value
-  // Clamp by max_ttl_ms when applying (stored value can exceed max_ttl)
-  effectiveTTL = Math.min(effectiveTTL, params.max_ttl_ms);
-  
-  // Return combined state: both L1 and L2 missed, fetched from network
-  const combinedStatus = l1Status === CacheStatus.MISS_L1 
-    ? CacheStatus.MISS_L1_MISS_L2 
-    : CacheStatus.STALE_L1_MISS_L2;
-  return { cacheStatus: combinedStatus, ttl_ms: effectiveTTL, data: l1Data };
+  // For L2 miss, use initial_ttl_ms (effective TTL not available yet)
+  // Return result (stats already incremented above)
+  return { cacheStatus: combinedStatus, ttl_ms: params.initial_ttl_ms, data: l1Data };
 }
 
 /**
