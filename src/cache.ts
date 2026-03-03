@@ -100,29 +100,41 @@ function returnWithStats(
 }
 
 /**
- * Get a snapshot of current cache statistics as an array of [status, count] tuples
- * More compact than object format for metadata storage
+ * Get a snapshot of current cache statistics as a simple array of numbers
+ * Order matches Object.keys(CACHE_STATS) - one number per CacheStatus
  */
-function getCacheStatsSnapshot(): Array<[CacheStatus, number]> {
-  return Object.entries(CACHE_STATS).map(([status, count]) => [status as CacheStatus, count]) as Array<[CacheStatus, number]>;
+function getCacheStatsSnapshot(): number[] {
+  return Object.values(CACHE_STATS);
 }
 
 /**
- * Merge stats from metadata into global stats (only once, when first encountered)
- * @param metadataStats Array of [status, count] tuples from metadata
+ * Get current global cache statistics (for observability tools)
  */
-function mergeStatsFromMetadata(
-  metadataStats?: Array<[CacheStatus, number]> | null
+export function getCurrentCacheStats(): Record<CacheStatus, number> {
+  return { ...CACHE_STATS };
+}
+
+
+/**
+ * Merge stats from metadata into global stats (only once, when first encountered)
+ * @param metadataStats Simple array of numbers from metadata (as read from KV metadata)
+ * Order matches Object.keys(CACHE_STATS) - one number per CacheStatus
+ */
+export function mergeStatsFromMetadata(
+  metadataStats?: number[] | null
 ): void {
-  if (!metadataStats || STATS_MERGED_FROM_KV) {
+  if (STATS_MERGED_FROM_KV || !metadataStats) {
     return;
   }
   
+  // Get the order of CacheStatus values to map array indices
+  const statusOrder = Object.keys(CACHE_STATS) as CacheStatus[];
+  
   // Merge stats from metadata array into global stats
-  for (const [status, count] of metadataStats) {
-    if (status in CACHE_STATS) {
-      CACHE_STATS[status] = (CACHE_STATS[status] || 0) + (count || 0);
-    }
+  for (let i = 0; i < metadataStats.length && i < statusOrder.length; i++) {
+    const status = statusOrder[i];
+    const count = metadataStats[i] || 0;
+    CACHE_STATS[status] = (CACHE_STATS[status] || 0) + count;
   }
   
   // Mark stats as merged
@@ -243,7 +255,7 @@ async function updateCaches(
   rawData: string,
   etag: string,
   timestamp: number = Date.now(),
-  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null
+  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: number[] } | null
 ): Promise<any> {
   // Store in L1 cache in the requested format
   const l1Data = params.parse ? JSON.parse(rawData) : rawData;
@@ -384,7 +396,7 @@ function checkL1Cache(
 function triggerBackgroundRefresh(
   params: CacheParams,
   etag: string,
-  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null
+  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: number[] } | null
 ): void {
   params.ctx.waitUntil((async () => {
     try {
@@ -425,7 +437,7 @@ async function checkL2Cache(
     return null;
   }
 
-  const existingMetadata = metadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null;
+  const existingMetadata = metadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: number[] } | null;
   
   // Merge stats from metadata into global stats (only once, when first encountered)
   mergeStatsFromMetadata(existingMetadata?.cacheStats);
@@ -507,7 +519,7 @@ async function handleMiss(
   // Fetcher returned fresh data (must be string) - store in caches
   // Get existing metadata to calculate effective TTL
   const { metadata: existingMetadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
-  const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: Array<[CacheStatus, number]> } | null;
+  const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number; cacheStats?: number[] } | null;
   
   // Merge stats from metadata into global stats (only once, when first encountered)
   mergeStatsFromMetadata(metadata?.cacheStats);

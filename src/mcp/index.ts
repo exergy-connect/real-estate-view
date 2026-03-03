@@ -6,6 +6,7 @@ import {
 import { createErrorResponse } from '../api';
 import { getModelToolDefinition, handleGetModel } from './tools/get_model';
 import { getEntityToolDefinition, handleGetEntity } from './tools/get_entity';
+import { getCacheStatsToolDefinition, handleGetCacheStats } from './tools/get_cache_stats';
 import { getCorsHeaders, normalizeRequestId, sendJSONRPCResponse, createServerTimingHeader } from './utils';
 import { createSSEStream, cleanupSessions, sendSSEMessage } from './sse';
 
@@ -58,7 +59,7 @@ const server = new McpServer(
 // Set up MCP server handlers using the underlying Server instance
 server.server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
-    tools: [getModelToolDefinition(), getEntityToolDefinition()]
+    tools: [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition()]
   };
 });
 
@@ -74,6 +75,10 @@ async function handleToolCallWithContext(
   
   if (name === 'get_entity') {
     return await handleGetEntity(args, context);
+  }
+  
+  if (name === 'get_cache_stats') {
+    return await handleGetCacheStats(args, context);
   }
   
   throw new Error(`Unknown tool: ${name}`);
@@ -137,7 +142,7 @@ export async function handleMCPRequest(
       });
     } else {
       // Simple tool listing
-      const tools = [getModelToolDefinition(), getEntityToolDefinition()];
+      const tools = [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition()];
       const deploymentVersion = getDeploymentVersion(env);
       return new Response(JSON.stringify({ 
         tools,
@@ -224,7 +229,7 @@ export async function handleMCPRequest(
       }
       
       if (requestData.method === 'tools/list') {
-        const tools = [getModelToolDefinition(), getEntityToolDefinition()];
+        const tools = [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition()];
         const deploymentVersion = getDeploymentVersion(env);
         return sendJSONRPCWithSSE(requestId, sessionId, {
           result: { 
