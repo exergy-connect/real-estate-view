@@ -292,33 +292,40 @@ async function updateCaches(
   const lastTimestamps = updateTimestamps.slice(-maxTimestamps);
   
   // Calculate new effective TTL (in minutes) - don't clamp by max_ttl when storing
-  const newEffectiveTTLMinutes = calculateEffectiveTTL(lastTimestamps, params.initial_ttl_ms, params.max_ttl_ms, false);
-  
-  // Initialize to initial TTL, or average with existing value when updating
-  const initial_ttl_minutes = Math.floor(params.initial_ttl_ms / (60 * 1000));
-  let effective_ttl_minutes: number;
-  if (existingMetadata?.effective_ttl_minutes !== undefined) {
-    // Average of new and old value when updating
-    effective_ttl_minutes = Math.floor((newEffectiveTTLMinutes + existingMetadata.effective_ttl_minutes) / 2);
+  // Only calculate if we have enough history (at least 2 timestamps)
+  let effective_ttl_minutes: number | undefined;
+  if (lastTimestamps.length >= 2) {
+    const newEffectiveTTLMinutes = calculateEffectiveTTL(lastTimestamps, params.initial_ttl_ms, params.max_ttl_ms, false);
+    
+    if (existingMetadata?.effective_ttl_minutes !== undefined) {
+      // Average of new and old value when updating
+      effective_ttl_minutes = Math.floor((newEffectiveTTLMinutes + existingMetadata.effective_ttl_minutes) / 2);
+    } else {
+      // First time we have enough history - use calculated value
+      effective_ttl_minutes = newEffectiveTTLMinutes;
+    }
   } else {
-    // Initialize to initial TTL
-    effective_ttl_minutes = initial_ttl_minutes;
+    // Not enough history yet - keep existing value if any, otherwise don't set it
+    effective_ttl_minutes = existingMetadata?.effective_ttl_minutes;
   }
   
   // Get current stats snapshot to store in metadata
   const cacheStatsSnapshot = getCacheStatsSnapshot();
   
+  // Build metadata object, only including effective_ttl_minutes if it's defined
+  const metadata: any = {
+    cachedAt: timestamp,
+    etag,
+    writeCount,
+    updateTimestamps: lastTimestamps,
+    cacheStats: cacheStatsSnapshot
+  };
+  if (effective_ttl_minutes !== undefined) {
+    metadata.effective_ttl_minutes = effective_ttl_minutes;
+  }
+  
   // Store raw data in KV (always store as string)
-  await params.env.CACHE_KV.put(params.cacheKey, rawData, { 
-    metadata: { 
-      cachedAt: timestamp, 
-      etag,
-      writeCount,
-      updateTimestamps: lastTimestamps,
-      effective_ttl_minutes,
-      cacheStats: cacheStatsSnapshot
-    }
-  });
+  await params.env.CACHE_KV.put(params.cacheKey, rawData, { metadata });
   
   return l1Data;
 }
