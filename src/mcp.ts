@@ -288,7 +288,8 @@ export async function handleMCPRequest(
       const requestData = await req.json();
       
       // Helper to send response (either via SSE or HTTP)
-      const sendResponse = (response: any): Response => {
+      // Falls back to HTTP if SSE session not found (e.g., different isolate)
+      const sendResponse = (response: any, additionalHeaders?: Record<string, string>): Response => {
         if (isSSEMessage) {
           if (sendSSEMessage(sessionId, response)) {
             // Response sent via SSE, return 202 Accepted
@@ -296,32 +297,18 @@ export async function handleMCPRequest(
               status: 202,
               headers: getCorsHeaders()
             });
-          } else {
-            // SSE session not found, return error
-            return new Response(JSON.stringify({
-              jsonrpc: '2.0',
-              id: response.id || null,
-              error: {
-                code: -32000,
-                message: 'SSE session not found'
-              }
-            }), {
-              status: 404,
-              headers: {
-                'Content-Type': 'application/json',
-                ...getCorsHeaders()
-              }
-            });
           }
-        } else {
-          // Regular HTTP response
-          return new Response(JSON.stringify(response), {
-            headers: {
-              'Content-Type': 'application/json',
-              ...getCorsHeaders()
-            }
-          });
+          // SSE session not found (likely different isolate), fall back to HTTP
+          // This is expected in Cloudflare Workers where requests may run in different isolates
         }
+        
+        // Regular HTTP response (or fallback from failed SSE)
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...getCorsHeaders(),
+          ...(additionalHeaders || {})
+        };
+        return new Response(JSON.stringify(response), { headers });
       };
       
       // For tool calls, we need to handle them with context
@@ -351,21 +338,14 @@ export async function handleMCPRequest(
             }
           };
           
-          // Add Server-Timing header for HTTP responses
-          if (!isSSEMessage) {
-            const headers: Record<string, string> = {
-              'Content-Type': 'application/json',
-              'Server-Timing': createServerTimingHeader(
-                toolResult.ioMs,
-                toolResult.cpuMs,
-                toolResult.cacheStatus
-              ),
-              ...getCorsHeaders()
-            };
-            return new Response(JSON.stringify(response), { headers });
-          }
-          
-          return sendResponse(response);
+          // Add Server-Timing header (works for both HTTP and SSE fallback)
+          return sendResponse(response, {
+            'Server-Timing': createServerTimingHeader(
+              toolResult.ioMs,
+              toolResult.cpuMs,
+              toolResult.cacheStatus
+            )
+          });
         } catch (error) {
           return sendResponse({
             jsonrpc: '2.0',
@@ -426,31 +406,25 @@ export async function handleMCPRequest(
         }
       };
       
-      if (isSSEMessage) {
-        if (sendSSEMessage(sessionId, errorResponse)) {
+      // Helper to send error response (falls back to HTTP if SSE fails)
+      const sendErrorResponse = (response: any): Response => {
+        if (isSSEMessage && sendSSEMessage(sessionId, response)) {
           return new Response('Accepted', {
             status: 202,
             headers: getCorsHeaders()
           });
-        } else {
-          // SSE session not found, return HTTP error
-          return new Response(JSON.stringify(errorResponse), {
-            status: 500,
-            headers: {
-              'Content-Type': 'application/json',
-              ...getCorsHeaders()
-            }
-          });
         }
-      }
+        // Fall back to HTTP (SSE session not found or not an SSE message)
+        return new Response(JSON.stringify(response), {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            ...getCorsHeaders()
+          }
+        });
+      };
       
-      return new Response(JSON.stringify(errorResponse), {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getCorsHeaders()
-        }
-      });
+      return sendErrorResponse(errorResponse);
     }
   }
 
