@@ -104,7 +104,7 @@ export function createCacheParams(
   const initial_ttl_ms = options?.initial_ttl_ms ?? 300 * 1000;      // Default: 5 minutes
   const max_ttl_ms = options?.max_ttl_ms ?? initial_ttl_ms * 3;      // Default: 3x initial TTL
   // Limit to MAX_TIMESTAMP_HISTORY due to 1kB metadata size constraint
-  const timestampHistoryCount = Math.min(options?.timestampHistoryCount ?? 3, MAX_TIMESTAMP_HISTORY);
+  const timestampHistoryCount = Math.min(options?.timestampHistoryCount ?? 5, MAX_TIMESTAMP_HISTORY);
 
   return {
     ...required,
