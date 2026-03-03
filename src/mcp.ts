@@ -218,6 +218,61 @@ function sendSSEMessage(sessionId: string, message: any): boolean {
 }
 
 /**
+ * Normalizes JSON-RPC request ID (ensures it's never null)
+ */
+function normalizeRequestId(id: any): string | number {
+  return id !== undefined ? id : 0;
+}
+
+/**
+ * Sends a JSON-RPC response via SSE or HTTP
+ * Falls back to HTTP if SSE session not found (e.g., different isolate)
+ */
+function sendJSONRPCResponse(
+  id: string | number,
+  sessionId: string | null,
+  options?: {
+    result?: any;
+    error?: { code: number; message: string };
+    additionalHeaders?: Record<string, string>;
+  }
+): Response {
+  // Construct the JSON-RPC response object
+  const response: { jsonrpc: string; id: string | number; result?: any; error?: any } = {
+    jsonrpc: '2.0',
+    id
+  };
+  
+  if (options?.result !== undefined) {
+    response.result = options.result;
+  } else if (options?.error !== undefined) {
+    response.error = options.error;
+  }
+  
+  const isSSEMessage = sessionId !== null;
+  
+  if (isSSEMessage) {
+    if (sendSSEMessage(sessionId, response)) {
+      // Response sent via SSE, return 202 Accepted
+      return new Response('Accepted', {
+        status: 202,
+        headers: getCorsHeaders()
+      });
+    }
+    // SSE session not found (likely different isolate), fall back to HTTP
+    // This is expected in Cloudflare Workers where requests may run in different isolates
+  }
+  
+  // Regular HTTP response (or fallback from failed SSE)
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...getCorsHeaders(),
+    ...(options?.additionalHeaders || {})
+  };
+  return new Response(JSON.stringify(response), { headers });
+}
+
+/**
  * Main MCP handler for the /api/mcp/sse endpoint
  */
 export async function handleMCPRequest(
@@ -281,44 +336,18 @@ export async function handleMCPRequest(
   if (req.method === 'POST') {
     // Check if this is an SSE message (has sessionId in query params)
     const sessionId = url.searchParams.get('sessionId');
-    const isSSEMessage = sessionId !== null;
     
     try {
       // Parse the JSON-RPC request
       const requestData = await req.json();
-      
-      // Helper to send response (either via SSE or HTTP)
-      // Falls back to HTTP if SSE session not found (e.g., different isolate)
-      const sendResponse = (response: any, additionalHeaders?: Record<string, string>): Response => {
-        if (isSSEMessage) {
-          if (sendSSEMessage(sessionId, response)) {
-            // Response sent via SSE, return 202 Accepted
-            return new Response('Accepted', {
-              status: 202,
-              headers: getCorsHeaders()
-            });
-          }
-          // SSE session not found (likely different isolate), fall back to HTTP
-          // This is expected in Cloudflare Workers where requests may run in different isolates
-        }
-        
-        // Regular HTTP response (or fallback from failed SSE)
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          ...getCorsHeaders(),
-          ...(additionalHeaders || {})
-        };
-        return new Response(JSON.stringify(response), { headers });
-      };
+      const requestId = normalizeRequestId(requestData.id);
       
       // For tool calls, we need to handle them with context
       if (requestData.method === 'tools/call') {
         const { name, arguments: args } = requestData.params || {};
         
         if (!name) {
-          return sendResponse({
-            jsonrpc: '2.0',
-            id: requestData.id !== undefined ? requestData.id : 0,
+          return sendJSONRPCResponse(requestId, sessionId, {
             error: {
               code: -32602,
               message: 'Missing tool name'
@@ -329,27 +358,22 @@ export async function handleMCPRequest(
         try {
           const toolResult = await handleToolCallWithContext(name, args, requestContext);
           
-          const response: any = {
-            jsonrpc: '2.0',
-            id: requestData.id !== undefined ? requestData.id : 0,
+          // Add Server-Timing header (works for both HTTP and SSE fallback)
+          return sendJSONRPCResponse(requestId, sessionId, {
             result: {
               content: toolResult.content,
               isError: false
+            },
+            additionalHeaders: {
+              'Server-Timing': createServerTimingHeader(
+                toolResult.ioMs,
+                toolResult.cpuMs,
+                toolResult.cacheStatus
+              )
             }
-          };
-          
-          // Add Server-Timing header (works for both HTTP and SSE fallback)
-          return sendResponse(response, {
-            'Server-Timing': createServerTimingHeader(
-              toolResult.ioMs,
-              toolResult.cpuMs,
-              toolResult.cacheStatus
-            )
           });
         } catch (error) {
-          return sendResponse({
-            jsonrpc: '2.0',
-            id: requestData.id !== undefined ? requestData.id : 0,
+          return sendJSONRPCResponse(requestId, sessionId, {
             error: {
               code: -32603,
               message: error instanceof Error ? error.message : String(error)
@@ -360,9 +384,7 @@ export async function handleMCPRequest(
       
       // For other requests (initialize, tools/list), handle manually
       if (requestData.method === 'initialize') {
-        return sendResponse({
-          jsonrpc: '2.0',
-          id: requestData.id !== undefined ? requestData.id : 0,
+        return sendJSONRPCResponse(requestId, sessionId, {
           result: {
             protocolVersion: '2024-11-05',
             capabilities: {
@@ -378,17 +400,13 @@ export async function handleMCPRequest(
       
       if (requestData.method === 'tools/list') {
         const tools = [getModelToolDefinition()];
-        return sendResponse({
-          jsonrpc: '2.0',
-          id: requestData.id !== undefined ? requestData.id : 0,
+        return sendJSONRPCResponse(requestId, sessionId, {
           result: { tools }
         });
       }
       
       // Unknown method
-      return sendResponse({
-        jsonrpc: '2.0',
-        id: requestData.id !== undefined ? requestData.id : 0,
+      return sendJSONRPCResponse(requestId, sessionId, {
         error: {
           code: -32601,
           message: `Unknown method: ${requestData.method}`
@@ -399,44 +417,22 @@ export async function handleMCPRequest(
       
       // Try to extract request ID from the error context if possible
       // If we can't parse the request, use a default ID
-      let requestId = 0;
+      let requestId: string | number = 0;
       try {
         const body = await req.clone().json().catch(() => null);
         if (body && body.id !== undefined) {
-          requestId = body.id;
+          requestId = normalizeRequestId(body.id);
         }
       } catch {
         // Ignore parsing errors
       }
       
-      const errorResponse = {
-        jsonrpc: '2.0',
-        id: requestId,
+      return sendJSONRPCResponse(requestId, sessionId, {
         error: {
           code: -32603,
           message: error instanceof Error ? error.message : String(error)
         }
-      };
-      
-      // Helper to send error response (falls back to HTTP if SSE fails)
-      const sendErrorResponse = (response: any): Response => {
-        if (isSSEMessage && sendSSEMessage(sessionId, response)) {
-          return new Response('Accepted', {
-            status: 202,
-            headers: getCorsHeaders()
-          });
-        }
-        // Fall back to HTTP (SSE session not found or not an SSE message)
-        return new Response(JSON.stringify(response), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          }
-        });
-      };
-      
-      return sendErrorResponse(errorResponse);
+      });
     }
   }
 
