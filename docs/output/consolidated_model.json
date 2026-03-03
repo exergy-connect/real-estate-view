@@ -12,7 +12,13 @@
         },
         "state": {
           "type": "string",
-          "description": "Foreign key reference to state.state"
+          "description": "Foreign key reference to state.state",
+          "x-parents": [
+            {
+              "entity": "state",
+              "parent_array": "cities"
+            }
+          ]
         },
         "zipcodes": {
           "type": "array",
@@ -34,7 +40,13 @@
       "properties": {
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer, primary key and foreign key to zipcode_area"
+          "description": "ZIP code as integer, primary key and foreign key to zipcode_area",
+          "x-parents": [
+            {
+              "entity": "zipcode_area",
+              "parent_array": "crime_statistics"
+            }
+          ]
         },
         "violent_crime": {
           "type": "number",
@@ -56,7 +68,13 @@
       "properties": {
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer, foreign key to zipcode_area"
+          "description": "ZIP code as integer, foreign key to zipcode_area",
+          "x-parents": [
+            {
+              "entity": "zipcode_area",
+              "parent_array": "demographics"
+            }
+          ]
         },
         "hispanic": {
           "type": "number",
@@ -79,7 +97,7 @@
         "zipcode"
       ],
       "x-created": 2,
-      "x-version": 2
+      "x-version": 1
     },
     "fault": {
       "type": "object",
@@ -90,7 +108,13 @@
         },
         "fault_system_name": {
           "type": "string",
-          "description": "Foreign key reference to fault_system.name"
+          "description": "Foreign key reference to fault_system.name",
+          "x-parents": [
+            {
+              "entity": "fault_system",
+              "parent_array": "faults"
+            }
+          ]
         },
         "description": {
           "type": "string",
@@ -226,7 +250,13 @@
       "properties": {
         "area_id": {
           "type": "string",
-          "description": "Primary key and foreign key reference to geographic_area.area_id"
+          "description": "Primary key and foreign key reference to geographic_area.area_id",
+          "x-parents": [
+            {
+              "entity": "geographic_area",
+              "parent_array": "bounds"
+            }
+          ]
         },
         "north_lat": {
           "type": "number",
@@ -264,7 +294,13 @@
         },
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer - foreign key reference to zipcode.zipcode"
+          "description": "ZIP code as integer - foreign key reference to zipcode.zipcode",
+          "x-parents": [
+            {
+              "entity": "zipcode",
+              "parent_array": "properties"
+            }
+          ]
         },
         "url": {
           "type": "string",
@@ -348,7 +384,13 @@
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number"
+          "description": "Foreign key reference to property.mls_number",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "address"
+            }
+          ]
         },
         "street_number": {
           "type": "integer",
@@ -386,7 +428,13 @@
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number"
+          "description": "Foreign key reference to property.mls_number",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "detail"
+            }
+          ]
         },
         "property_type": {
           "type": "string",
@@ -428,14 +476,20 @@
         "mls_number"
       ],
       "x-created": 2,
-      "x-version": 2
+      "x-version": 1
     },
     "property_economics": {
       "type": "object",
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number and property_detail.mls_number (for computed field access)"
+          "description": "Foreign key reference to property.mls_number and property_detail.mls_number (for computed field access)",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "economics"
+            }
+          ]
         },
         "price": {
           "type": "integer",
@@ -466,7 +520,13 @@
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number"
+          "description": "Foreign key reference to property.mls_number",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "geolocation"
+            }
+          ]
         },
         "latitude": {
           "type": "number",
@@ -510,14 +570,20 @@
         "mls_number"
       ],
       "x-created": 2,
-      "x-version": 2
+      "x-version": 1
     },
     "property_media": {
       "type": "object",
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number"
+          "description": "Foreign key reference to property.mls_number",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "media"
+            }
+          ]
         },
         "images": {
           "type": "array",
@@ -531,14 +597,20 @@
         "mls_number"
       ],
       "x-created": 2,
-      "x-version": 2
+      "x-version": 1
     },
     "property_metadata": {
       "type": "object",
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number"
+          "description": "Foreign key reference to property.mls_number",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "metadata"
+            }
+          ]
         },
         "index": {
           "type": "integer",
@@ -557,14 +629,20 @@
         "mls_number"
       ],
       "x-created": 2,
-      "x-version": 2
+      "x-version": 1
     },
     "property_schools": {
       "type": "object",
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "Foreign key reference to property.mls_number"
+          "description": "Foreign key reference to property.mls_number",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "property_schools"
+            }
+          ]
         },
         "elementary_school_id": {
           "type": "integer",
@@ -642,7 +720,13 @@
         },
         "area_id": {
           "type": "string",
-          "description": "Foreign key reference to geographic_area.area_id (school district/school zone)"
+          "description": "Foreign key reference to geographic_area.area_id (school district/school zone)",
+          "x-parents": [
+            {
+              "entity": "geographic_area",
+              "parent_array": "schools"
+            }
+          ]
         }
       },
       "required": [
@@ -652,7 +736,7 @@
       "x-modified": [
         2
       ],
-      "x-version": 2
+      "x-version": 1
     },
     "search_profile": {
       "type": "object",
@@ -797,7 +881,13 @@
         },
         "city": {
           "type": "string",
-          "description": "Foreign key reference to city.name"
+          "description": "Foreign key reference to city.name",
+          "x-parents": [
+            {
+              "entity": "city",
+              "parent_array": "zipcodes"
+            }
+          ]
         },
         "county": {
           "type": "string",
@@ -1006,5 +1096,13 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "changes": [
+    {
+      "id": 1,
+      "timestamp": "2026-03-02T23:26:07.371643",
+      "author": "jeroen",
+      "note": "Regenerate consolidated model with x-parents support"
+    }
+  ]
 }
