@@ -1,5 +1,5 @@
 import { getCachedJSON, CacheStatus, createSmartFetcher } from './cache';
-import { handleMCPRequest } from './mcp';
+import { handleMCPRequest } from './mcp/index';
 
 // Define a simple type for our handlers
 type LoadCachedDataFn = () => Promise<any>;
@@ -45,7 +45,7 @@ function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number,
 /**
  * Creates a JSON error response with the specified status code
  */
-function createErrorResponse(error: string, status: number, message?: string): Response {
+export function createErrorResponse(error: string, status: number, message?: string): Response {
   return new Response(JSON.stringify({ 
     error,
     ...(message && { message })
