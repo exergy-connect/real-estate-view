@@ -60,14 +60,16 @@ export async function loadCachedEntity(
   baseUrl: string
 ): Promise<{ entityData: Record<string, any>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
   const cacheKey = `entity_${entityName}.json`;
-  const ttl_ms = 3600 * 1000; // 1 hour in milliseconds
+  const initial_ttl_ms = 3600 * 1000; // 1 hour in milliseconds
+  const max_ttl_ms = 7200 * 1000; // 2 hours in milliseconds
+  const timestampHistoryCount = 3;
   const assetUrl = new URL(`output/data/entities/${entityName}.json`, baseUrl).toString();
   
   // Create a smart fetcher that handles ETag revalidation
   const fetcher = createSmartFetcher(env, assetUrl);
   
   const ioStart = performance.now();
-  const result = await getCachedJSON({ env, ctx, cacheKey, ttl_ms, fetcher, parse: true }); // Parse JSON
+  const result = await getCachedJSON({ env, ctx, cacheKey, initial_ttl_ms, max_ttl_ms, timestampHistoryCount, fetcher, parse: true }); // Parse JSON
   const ioMs = performance.now() - ioStart;
   
   // Entity files are stored as { pk_string: entity_data, ... }

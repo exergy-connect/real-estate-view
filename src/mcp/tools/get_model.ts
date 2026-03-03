@@ -51,14 +51,16 @@ export async function loadCachedModel(
   baseUrl: string
 ): Promise<{ model: string; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
   const cacheKey = "consolidated_model.json";
-  const ttl_ms = 3600 * 1000; // 1 hour in milliseconds
+  const initial_ttl_ms = 3600 * 1000; // 1 hour in milliseconds
+  const max_ttl_ms = 7200 * 1000; // 2 hours in milliseconds
+  const timestampHistoryCount = 3;
   const assetUrl = new URL("output/consolidated_model.json", baseUrl).toString();
   
   // Create a smart fetcher that handles ETag revalidation and Gzip decompression
   const fetcher = createSmartFetcher(env, assetUrl);
   
   const ioStart = performance.now();
-  const result = await getCachedJSON({ env, ctx, cacheKey, ttl_ms, fetcher, parse: false }); // Don't parse JSON
+  const result = await getCachedJSON({ env, ctx, cacheKey, initial_ttl_ms, max_ttl_ms, timestampHistoryCount, fetcher, parse: false }); // Don't parse JSON
   const ioMs = performance.now() - ioStart;
   
   return {

@@ -1,8 +1,10 @@
 import { apiRoutes } from './api';
 import { getCachedJSON, CacheStatus, createSmartFetcher } from './cache';
 
-// Maximum TTL for cached data in milliseconds (default: 5 minutes)
-const MAX_TTL_MS = 300 * 1000;
+// TTL configuration for cached data
+const INITIAL_TTL_MS = 300 * 1000; // 5 minutes
+const MAX_TTL_MS = 3600 * 1000;    // 1 hour
+const TIMESTAMP_HISTORY_COUNT = 3;
 
 async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ data: any; cacheStatus: CacheStatus }> {
   const cacheKey = "consolidated_data.json";
@@ -11,7 +13,7 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   // Create a smart fetcher that handles ETag revalidation and Gzip decompression
   const fetcher = createSmartFetcher(env, assetUrl);
   
-  const result = await getCachedJSON({ env, ctx, cacheKey, ttl_ms: MAX_TTL_MS, fetcher, parse: true }); // Parse JSON
+  const result = await getCachedJSON({ env, ctx, cacheKey, initial_ttl_ms: INITIAL_TTL_MS, max_ttl_ms: MAX_TTL_MS, timestampHistoryCount: TIMESTAMP_HISTORY_COUNT, fetcher, parse: true }); // Parse JSON
   
   return { data: result.data, cacheStatus: result.cacheStatus };
 }
