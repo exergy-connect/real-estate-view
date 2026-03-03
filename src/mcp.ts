@@ -1,4 +1,15 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { CacheStatus, getCachedJSON, createSmartFetcher } from './cache';
+
+// Initialize the MCP Server
+const server = new McpServer(
+  { name: "har-model", version: "1.0.0" },
+  { capabilities: { tools: {} } }
+);
 
 /**
  * Tool definition for get_model
@@ -39,13 +50,6 @@ function getModelToolDefinition() {
       required: ['ai_reasoning', 'llm_model_version', 'initial_prompt'],
     },
   };
-}
-
-/**
- * Returns the list of available MCP tools
- */
-export function listMCPTools() {
-  return [getModelToolDefinition()];
 }
 
 /**
@@ -102,33 +106,21 @@ function getCorsHeaders(): Record<string, string> {
   };
 }
 
-/**
- * Creates a JSON error response with the specified status code
- */
-function createErrorResponse(error: string, status: number, message?: string): Response {
-  return new Response(JSON.stringify({ 
-    error,
-    ...(message && { message })
-  }), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getCorsHeaders()
-    }
-  });
-}
+// Set up MCP server handlers using the underlying Server instance
+server.server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [getModelToolDefinition()]
+  };
+});
 
-/**
- * Handles MCP tool calls
- */
-async function handleToolCall(
-  toolName: string,
-  env: any,
-  ctx: any,
-  origin: string
+// Create a tool handler that uses context
+async function handleToolCallWithContext(
+  name: string,
+  args: any,
+  context: { env: any; ctx: any; origin: string }
 ): Promise<{ content: Array<{ type: string; text: string }>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
-  if (toolName === 'get_model') {
-    const result = await loadCachedModel(env, ctx, origin);
+  if (name === 'get_model') {
+    const result = await loadCachedModel(context.env, context.ctx, context.origin);
     return {
       content: [
         {
@@ -142,8 +134,16 @@ async function handleToolCall(
     };
   }
   
-  throw new Error(`Unknown tool: ${toolName}`);
+  throw new Error(`Unknown tool: ${name}`);
 }
+
+// Set up tool call handler (will be called with context via manual routing)
+server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // This handler won't have access to Workers context directly
+  // We'll handle tool calls manually in the HTTP handler
+  const { name } = request.params;
+  throw new Error(`Tool calls must be handled with context. Tool: ${name}`);
+});
 
 /**
  * Main MCP handler for the /api/mcp/sse endpoint
@@ -160,9 +160,13 @@ export async function handleMCPRequest(
     });
   }
 
-  // Handle GET requests for tool listing (MCP protocol)
+  const { origin } = new URL(req.url);
+  const context = ctx || { waitUntil: (p: Promise<any>) => p };
+  const requestContext = { env, ctx: context, origin };
+  
+  // Handle GET requests for tool listing (simple format)
   if (req.method === 'GET') {
-    const tools = listMCPTools();
+    const tools = [getModelToolDefinition()];
     return new Response(JSON.stringify({ tools }), {
       headers: {
         'Content-Type': 'application/json',
@@ -171,124 +175,152 @@ export async function handleMCPRequest(
     });
   }
 
-  // Handle POST requests for MCP tool calls
-  if (req.method !== 'POST') {
-    return createErrorResponse('Method not allowed. Use GET for tool listing or POST for tool calls.', 405);
-  }
-  
-  try {
-    // Parse MCP tool call request
-    const requestData = await req.json();
-    
-    // Handle MCP protocol format
-    if (requestData.method === 'tools/list') {
-      const tools = listMCPTools();
+  // Handle POST requests for MCP protocol messages
+  if (req.method === 'POST') {
+    try {
+      // Parse the JSON-RPC request
+      const requestData = await req.json();
+      
+      // For tool calls, we need to handle them with context
+      if (requestData.method === 'tools/call') {
+        const { name, arguments: args } = requestData.params || {};
+        
+        if (!name) {
+          return new Response(JSON.stringify({
+            jsonrpc: '2.0',
+            id: requestData.id || null,
+            error: {
+              code: -32602,
+              message: 'Missing tool name'
+            }
+          }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              ...getCorsHeaders()
+            }
+          });
+        }
+        
+        try {
+          const toolResult = await handleToolCallWithContext(name, args, requestContext);
+          
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            ...getCorsHeaders()
+          };
+          
+          headers['Server-Timing'] = createServerTimingHeader(
+            toolResult.ioMs,
+            toolResult.cpuMs,
+            toolResult.cacheStatus
+          );
+          
+          return new Response(JSON.stringify({
+            jsonrpc: '2.0',
+            id: requestData.id || null,
+            result: {
+              content: toolResult.content,
+              isError: false
+            }
+          }), { headers });
+        } catch (error) {
+          return new Response(JSON.stringify({
+            jsonrpc: '2.0',
+            id: requestData.id || null,
+            error: {
+              code: -32603,
+              message: error instanceof Error ? error.message : String(error)
+            }
+          }), {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/json',
+              ...getCorsHeaders()
+            }
+          });
+        }
+      }
+      
+      // For other requests (initialize, tools/list), handle manually
+      // The SDK Server doesn't have handleRequest, so we route manually
+      if (requestData.method === 'initialize') {
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: requestData.id || null,
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: {
+              tools: {}
+            },
+            serverInfo: {
+              name: 'har-model',
+              version: '1.0.0'
+            }
+          }
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            ...getCorsHeaders()
+          }
+        });
+      }
+      
+      if (requestData.method === 'tools/list') {
+        const tools = [getModelToolDefinition()];
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: requestData.id || null,
+          result: { tools }
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            ...getCorsHeaders()
+          }
+        });
+      }
+      
+      // Unknown method
       return new Response(JSON.stringify({
         jsonrpc: '2.0',
         id: requestData.id || null,
-        result: { tools }
+        error: {
+          code: -32601,
+          message: `Unknown method: ${requestData.method}`
+        }
       }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          ...getCorsHeaders()
+        }
+      });
+    } catch (error) {
+      console.error('MCP handler error:', error);
+      return new Response(JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32603,
+          message: error instanceof Error ? error.message : String(error)
+        }
+      }), {
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
           ...getCorsHeaders()
         }
       });
     }
-
-    // Handle tool call
-    if (requestData.method === 'tools/call') {
-      const toolName = requestData.params?.name || requestData.tool || requestData.name;
-      
-      if (!toolName) {
-        return new Response(JSON.stringify({
-          jsonrpc: '2.0',
-          id: requestData.id || null,
-          error: { code: -32602, message: 'Missing tool name' }
-        }), {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          }
-        });
-      }
-
-      const { origin } = new URL(req.url);
-      const context = ctx || { waitUntil: (p: Promise<any>) => p };
-      
-      try {
-        const toolResult = await handleToolCall(toolName, env, context, origin);
-        
-        return new Response(JSON.stringify({
-          jsonrpc: '2.0',
-          id: requestData.id || null,
-          result: {
-            content: toolResult.content,
-            isError: false
-          }
-        }), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Server-Timing': createServerTimingHeader(toolResult.ioMs, toolResult.cpuMs, toolResult.cacheStatus),
-            ...getCorsHeaders()
-          }
-        });
-      } catch (error) {
-        // Unknown tool
-        return new Response(JSON.stringify({
-          jsonrpc: '2.0',
-          id: requestData.id || null,
-          error: { 
-            code: -32601, 
-            message: error instanceof Error ? error.message : String(error),
-            data: { availableTools: ['get_model'] } 
-          }
-        }), {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            ...getCorsHeaders()
-          }
-        });
-      }
-    }
-
-    // Fallback: handle simple tool call format (for backward compatibility)
-    const toolName = requestData.tool || requestData.name;
-    if (toolName) {
-      const { origin } = new URL(req.url);
-      const context = ctx || { waitUntil: (p: Promise<any>) => p };
-      
-      try {
-        const toolResult = await handleToolCall(toolName, env, context, origin);
-        
-        const response = {
-          type: 'tool_response',
-          tool: 'get_model',
-          content: toolResult.content
-        };
-        
-        return new Response(JSON.stringify(response), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Server-Timing': createServerTimingHeader(toolResult.ioMs, toolResult.cpuMs, toolResult.cacheStatus),
-            ...getCorsHeaders()
-          }
-        });
-      } catch (error) {
-        return createErrorResponse(
-          error instanceof Error ? error.message : String(error),
-          400
-        );
-      }
-    }
-
-    return createErrorResponse('Invalid MCP request format', 400);
-  } catch (error) {
-    return createErrorResponse(
-      'Failed to process MCP tool call',
-      500,
-      error instanceof Error ? error.message : String(error)
-    );
   }
+
+  return new Response(JSON.stringify({
+    error: 'Method not allowed'
+  }), {
+    status: 405,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getCorsHeaders()
+    }
+  });
 }
