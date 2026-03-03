@@ -318,7 +318,7 @@ export async function handleMCPRequest(
         if (!name) {
           return sendResponse({
             jsonrpc: '2.0',
-            id: requestData.id || null,
+            id: requestData.id !== undefined ? requestData.id : 0,
             error: {
               code: -32602,
               message: 'Missing tool name'
@@ -331,7 +331,7 @@ export async function handleMCPRequest(
           
           const response: any = {
             jsonrpc: '2.0',
-            id: requestData.id || null,
+            id: requestData.id !== undefined ? requestData.id : 0,
             result: {
               content: toolResult.content,
               isError: false
@@ -349,7 +349,7 @@ export async function handleMCPRequest(
         } catch (error) {
           return sendResponse({
             jsonrpc: '2.0',
-            id: requestData.id || null,
+            id: requestData.id !== undefined ? requestData.id : 0,
             error: {
               code: -32603,
               message: error instanceof Error ? error.message : String(error)
@@ -362,7 +362,7 @@ export async function handleMCPRequest(
       if (requestData.method === 'initialize') {
         return sendResponse({
           jsonrpc: '2.0',
-          id: requestData.id || null,
+          id: requestData.id !== undefined ? requestData.id : 0,
           result: {
             protocolVersion: '2024-11-05',
             capabilities: {
@@ -380,7 +380,7 @@ export async function handleMCPRequest(
         const tools = [getModelToolDefinition()];
         return sendResponse({
           jsonrpc: '2.0',
-          id: requestData.id || null,
+          id: requestData.id !== undefined ? requestData.id : 0,
           result: { tools }
         });
       }
@@ -388,7 +388,7 @@ export async function handleMCPRequest(
       // Unknown method
       return sendResponse({
         jsonrpc: '2.0',
-        id: requestData.id || null,
+        id: requestData.id !== undefined ? requestData.id : 0,
         error: {
           code: -32601,
           message: `Unknown method: ${requestData.method}`
@@ -397,9 +397,21 @@ export async function handleMCPRequest(
     } catch (error) {
       console.error('MCP handler error:', error);
       
+      // Try to extract request ID from the error context if possible
+      // If we can't parse the request, use a default ID
+      let requestId = 0;
+      try {
+        const body = await req.clone().json().catch(() => null);
+        if (body && body.id !== undefined) {
+          requestId = body.id;
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+      
       const errorResponse = {
         jsonrpc: '2.0',
-        id: null,
+        id: requestId,
         error: {
           code: -32603,
           message: error instanceof Error ? error.message : String(error)
