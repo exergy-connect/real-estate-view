@@ -24,13 +24,13 @@ export type EntityFetcher = (
  * Represents all possible combinations of L1 (RAM) and L2 (KV) cache states
  */
 export enum CacheStatus {
-  /** L1 hit (fresh) - fastest path */
-  HIT_L1_RAM = 'HIT_L1_RAM',
-  
   /** L1 cache miss (not in memory) - intermediate state */
   MISS_L1 = 'MISS_L1',
   /** L1 cache stale (in memory but expired) - intermediate state */
   STALE_L1 = 'STALE_L1',
+  
+  /** L1 hit (fresh) - fastest path */
+  HIT_L1_RAM = 'HIT_L1_RAM',
   
   /** L1 miss, L2 hit (fresh) */
   MISS_L1_HIT_L2 = 'MISS_L1_HIT_L2',
@@ -54,13 +54,18 @@ export enum CacheStatus {
 }
 
 /**
- * Global cache statistics - tracks counters for each cache status
+ * Type for final cache statuses (excludes intermediate states)
+ * Intermediate states (MISS_L1, STALE_L1) are not stored in L2 metadata to optimize storage
+ */
+type FinalCacheStatus = Exclude<CacheStatus, CacheStatus.MISS_L1 | CacheStatus.STALE_L1>;
+
+/**
+ * Global cache statistics - tracks counters for final cache statuses only
+ * Intermediate states (MISS_L1, STALE_L1) are not counted to optimize L2 metadata storage
  * Persists in warm Worker isolates RAM
  */
-const CACHE_STATS: Record<CacheStatus, number> = {
+const CACHE_STATS: Record<FinalCacheStatus, number> = {
   [CacheStatus.HIT_L1_RAM]: 0,
-  [CacheStatus.MISS_L1]: 0,
-  [CacheStatus.STALE_L1]: 0,
   [CacheStatus.MISS_L1_HIT_L2]: 0,
   [CacheStatus.MISS_L1_STALE_L2]: 0,
   [CacheStatus.MISS_L1_MISS_L2]: 0,
@@ -79,9 +84,13 @@ let STATS_MERGED_FROM_KV = false;
 
 /**
  * Increment cache statistics counter for a given status
+ * Only final states are counted (intermediate states are ignored to optimize L2 metadata storage)
  */
 function incrementCacheStats(status: CacheStatus): void {
-  CACHE_STATS[status] = (CACHE_STATS[status] || 0) + 1;
+  // Only count final states, ignore intermediate states
+  if (status !== CacheStatus.MISS_L1 && status !== CacheStatus.STALE_L1) {
+    CACHE_STATS[status as FinalCacheStatus] = (CACHE_STATS[status as FinalCacheStatus] || 0) + 1;
+  }
 }
 
 /**
@@ -101,7 +110,8 @@ function returnWithStats(
 
 /**
  * Get a snapshot of current cache statistics as a simple array of numbers
- * Order matches Object.keys(CACHE_STATS) - one number per CacheStatus
+ * Order matches Object.keys(CACHE_STATS) - only final states (excludes intermediate states)
+ * Optimized for L2 metadata storage
  */
 function getCacheStatsSnapshot(): number[] {
   return Object.values(CACHE_STATS);
@@ -109,16 +119,21 @@ function getCacheStatsSnapshot(): number[] {
 
 /**
  * Get current global cache statistics (for observability tools)
+ * Returns all CacheStatus values, with intermediate states set to 0
  */
 export function getCurrentCacheStats(): Record<CacheStatus, number> {
-  return { ...CACHE_STATS };
+  return {
+    [CacheStatus.MISS_L1]: 0,
+    [CacheStatus.STALE_L1]: 0,
+    ...CACHE_STATS
+  };
 }
 
 
 /**
  * Merge stats from metadata into global stats (only once, when first encountered)
  * @param metadataStats Simple array of numbers from metadata (as read from KV metadata)
- * Order matches Object.keys(CACHE_STATS) - one number per CacheStatus
+ * Order matches Object.keys(CACHE_STATS) - only final states (excludes intermediate states)
  */
 export function mergeStatsFromMetadata(
   metadataStats?: number[] | null
@@ -127,8 +142,9 @@ export function mergeStatsFromMetadata(
     return;
   }
   
-  // Get the order of CacheStatus values to map array indices
-  const statusOrder = Object.keys(CACHE_STATS) as CacheStatus[];
+  // Get the order of final CacheStatus values to map array indices
+  // Order matches Object.keys(CACHE_STATS) - only final states
+  const statusOrder = Object.keys(CACHE_STATS) as FinalCacheStatus[];
   
   // Merge stats from metadata array into global stats
   for (let i = 0; i < metadataStats.length && i < statusOrder.length; i++) {
@@ -361,7 +377,8 @@ function checkL1Cache(
 ): GetCachedJSONResult {
   const warm = L1_CACHE.get(params.cacheKey);
   if (!warm) {
-    return returnWithStats(CacheStatus.MISS_L1, { ttl_ms: 0 });
+    // MISS_L1 is an intermediate state - don't count stats
+    return { cacheStatus: CacheStatus.MISS_L1, ttl_ms: 0 };
   }
 
   // Debug assert: validate cached format matches requested format
@@ -375,12 +392,15 @@ function checkL1Cache(
   const age = now - warm.validatedAt;
   // Use initial_ttl_ms for L1 cache checks (L1 doesn't have metadata)
   if (age >= params.initial_ttl_ms) {
-    return returnWithStats(CacheStatus.STALE_L1, {
+    // STALE_L1 is an intermediate state - don't count stats
+    return {
+      cacheStatus: CacheStatus.STALE_L1,
       ttl_ms: 0,
       l1Entry: warm
-    });
+    };
   }
 
+  // HIT_L1_RAM is a final state - count stats
   return returnWithStats(CacheStatus.HIT_L1_RAM, {
     ttl_ms: params.initial_ttl_ms - age,
     l1Entry: warm

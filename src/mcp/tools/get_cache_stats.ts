@@ -125,12 +125,38 @@ export async function handleGetCacheStats(
       
       if (Array.isArray(cacheStatsArray) && cacheStatsArray.every((v: any) => typeof v === 'number')) {
         // Convert simple number array to Record for easier handling
-        // Order matches Object.keys(CACHE_STATS) in cache.ts - use all CacheStatus values in enum order
-        const statusOrder = Object.values(CacheStatus) as CacheStatus[];
-        const stats: Record<CacheStatus, number> = {} as Record<CacheStatus, number>;
+        // Array contains only final states (order matches Object.keys(CACHE_STATS) in cache.ts)
+        // Initialize all CacheStatus values to 0, then populate final states from array
+        const stats: Record<CacheStatus, number> = {
+          [CacheStatus.MISS_L1]: 0,
+          [CacheStatus.STALE_L1]: 0,
+          [CacheStatus.HIT_L1_RAM]: 0,
+          [CacheStatus.MISS_L1_HIT_L2]: 0,
+          [CacheStatus.MISS_L1_STALE_L2]: 0,
+          [CacheStatus.MISS_L1_MISS_L2]: 0,
+          [CacheStatus.STALE_L1_HIT_L2]: 0,
+          [CacheStatus.STALE_L1_STALE_L2]: 0,
+          [CacheStatus.STALE_L1_MISS_L2]: 0,
+          [CacheStatus.STALE_REVALIDATING]: 0,
+          [CacheStatus.ERROR]: 0
+        };
+        
+        // Final states in the order they appear in CACHE_STATS (excludes intermediate states)
+        const finalStates: CacheStatus[] = [
+          CacheStatus.HIT_L1_RAM,
+          CacheStatus.MISS_L1_HIT_L2,
+          CacheStatus.MISS_L1_STALE_L2,
+          CacheStatus.MISS_L1_MISS_L2,
+          CacheStatus.STALE_L1_HIT_L2,
+          CacheStatus.STALE_L1_STALE_L2,
+          CacheStatus.STALE_L1_MISS_L2,
+          CacheStatus.STALE_REVALIDATING,
+          CacheStatus.ERROR
+        ];
+        
         let maxValue = 0;
-        for (let i = 0; i < cacheStatsArray.length && i < statusOrder.length; i++) {
-          const status = statusOrder[i];
+        for (let i = 0; i < cacheStatsArray.length && i < finalStates.length; i++) {
+          const status = finalStates[i];
           const value = cacheStatsArray[i] || 0;
           stats[status] = value;
           maxValue = Math.max(maxValue, value);
@@ -165,9 +191,19 @@ export async function handleGetCacheStats(
     // Merge selected snapshot into global stats using mergeStatsFromMetadata
     if (selectedSnapshot) {
       // Convert selected snapshot stats to simple number array for mergeStatsFromMetadata
-      // Order matches Object.keys(CACHE_STATS) in cache.ts - use all CacheStatus values in enum order
-      const statusOrder = Object.values(CacheStatus) as CacheStatus[];
-      const statsArray: number[] = statusOrder.map(status => selectedSnapshot.stats[status] || 0);
+      // Order matches Object.keys(CACHE_STATS) in cache.ts - only final states
+      const finalStates: CacheStatus[] = [
+        CacheStatus.HIT_L1_RAM,
+        CacheStatus.MISS_L1_HIT_L2,
+        CacheStatus.MISS_L1_STALE_L2,
+        CacheStatus.MISS_L1_MISS_L2,
+        CacheStatus.STALE_L1_HIT_L2,
+        CacheStatus.STALE_L1_STALE_L2,
+        CacheStatus.STALE_L1_MISS_L2,
+        CacheStatus.STALE_REVALIDATING,
+        CacheStatus.ERROR
+      ];
+      const statsArray: number[] = finalStates.map(status => selectedSnapshot.stats[status] || 0);
       mergeStatsFromMetadata(statsArray);
     }
 
