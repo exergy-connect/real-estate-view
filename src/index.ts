@@ -74,6 +74,21 @@ export default {
     // Default to Assets for HTML/Data
     try {
       const response = await env.ASSETS.fetch(request);
+      
+      // Add cache-busting headers for HTML files to prevent stale content
+      if (url.pathname === '/' || url.pathname.endsWith('.html')) {
+        const newHeaders = new Headers(response.headers);
+        newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        newHeaders.set('Pragma', 'no-cache');
+        newHeaders.set('Expires', '0');
+        
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: newHeaders
+        });
+      }
+      
       return response;
     } catch (error) {
       console.error('Error fetching asset:', error);
