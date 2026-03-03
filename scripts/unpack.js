@@ -11,7 +11,7 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 console.log(`Loading model from ${MODEL_FILE}...`);
 const model = JSON.parse(fs.readFileSync(MODEL_FILE, 'utf-8'));
 
-// Extract entity types from the model's properties (top-level entities)
+// Extract entity types from the model's properties
 const entityTypes = Object.keys(model.properties || {});
 console.log(`Found ${entityTypes.length} entity types in model: ${entityTypes.join(', ')}`);
 
@@ -24,40 +24,6 @@ if (!data.data) {
     throw new Error('Invalid data structure: missing "data" key');
 }
 
-// Initialize collections for each entity type
-const entityCollections = {};
-for (const entityType of entityTypes) {
-    entityCollections[entityType] = {};
-}
-
-/**
- * Build a map of field names to entity types from the model
- * This helps identify which fields contain arrays of entities
- */
-function buildFieldToEntityMap(model) {
-    const fieldMap = {};
-    const entityTypes = Object.keys(model.properties || {});
-    
-    for (const entityType of entityTypes) {
-        const entityDef = model.$defs?.[entityType];
-        if (!entityDef) continue;
-        
-        const properties = entityDef.properties || {};
-        for (const [fieldName, fieldDef] of Object.entries(properties)) {
-            if (fieldDef.type === 'array' && fieldDef.items?.$ref) {
-                // Extract entity type from $ref (e.g., "#/$defs/city" -> "city")
-                const ref = fieldDef.items.$ref;
-                const refEntityType = ref.replace('#/$defs/', '');
-                if (entityTypes.includes(refEntityType)) {
-                    fieldMap[fieldName] = refEntityType;
-                }
-            }
-        }
-    }
-    
-    return fieldMap;
-}
-
 /**
  * Get primary key field name for an entity type from the model
  */
@@ -66,121 +32,159 @@ function getPrimaryKey(entityType, model) {
     if (!entityDef) return null;
     
     const required = entityDef.required || [];
-    const properties = entityDef.properties || {};
-    
-    // Primary key is typically the first required field, or a field ending in _id
-    for (const field of required) {
-        if (field.endsWith('_id') || field === entityType || field === 'id') {
-            return field;
-        }
-    }
-    // Fallback: first required field
     if (required.length > 0) {
         return required[0];
     }
-    // Last resort: look for common patterns
-    for (const [field, _] of Object.entries(properties)) {
-        if (field.endsWith('_id') || field === entityType || field === 'id') {
-            return field;
+    return null;
+}
+
+/**
+ * Find foreign key field in child that references parent
+ */
+function findForeignKey(childEntityType, parentEntityType, model) {
+    const childDef = model.$defs?.[childEntityType];
+    if (!childDef) return null;
+    
+    const properties = childDef.properties || {};
+    for (const [fieldName, fieldDef] of Object.entries(properties)) {
+        const desc = fieldDef.description || '';
+        if (desc.includes(`Foreign key reference to ${parentEntityType}`)) {
+            return fieldName;
         }
     }
     return null;
 }
 
 /**
- * Recursively walk through nested data structure and collect all entities
+ * Build map of parent entity -> array field -> child entity type
  */
-function collectEntities(obj, entityCollections, entityTypes, model, fieldToEntityMap, visited = new WeakSet()) {
-    if (!obj || typeof obj !== 'object') {
-        return;
-    }
+function buildParentChildMap(model) {
+    const map = {};
+    const entityTypes = Object.keys(model.properties || {});
     
-    // Prevent infinite loops with circular references
-    if (visited.has(obj)) {
+    for (const parentType of entityTypes) {
+        const parentDef = model.$defs?.[parentType];
+        if (!parentDef) continue;
+        
+        const properties = parentDef.properties || {};
+        for (const [fieldName, fieldDef] of Object.entries(properties)) {
+            if (fieldDef.type === 'array' && fieldDef.items?.$ref) {
+                const childType = fieldDef.items.$ref.replace('#/$defs/', '');
+                if (entityTypes.includes(childType)) {
+                    if (!map[parentType]) map[parentType] = {};
+                    map[parentType][fieldName] = childType;
+                }
+            }
+        }
+    }
+    return map;
+}
+
+// Initialize entity store (flat structure)
+const entityStore = {};
+for (const entityType of entityTypes) {
+    entityStore[entityType] = {};
+}
+
+// Build parent-child relationship map
+const parentChildMap = buildParentChildMap(model);
+
+/**
+ * Flatten nested structure to entity store format, filling in parent foreign keys
+ */
+function flattenToEntityStore(obj, parentContext = null, visited = new WeakSet()) {
+    if (!obj || typeof obj !== 'object' || visited.has(obj)) {
         return;
     }
     visited.add(obj);
     
-    // If this is an array, process each element
     if (Array.isArray(obj)) {
         for (const item of obj) {
-            collectEntities(item, entityCollections, entityTypes, model, fieldToEntityMap, visited);
+            flattenToEntityStore(item, parentContext, visited);
         }
         return;
     }
     
-    // Recursively process all properties
-    for (const [key, value] of Object.entries(obj)) {
-        // Check if this field contains an array of entities (using field map from model)
-        const entityType = fieldToEntityMap[key];
-        if (entityType && Array.isArray(value)) {
-            const pkField = getPrimaryKey(entityType, model);
-            for (const entity of value) {
-                if (entity && typeof entity === 'object') {
-                    // Determine the primary key value
-                    let entityId;
-                    if (pkField && entity[pkField] !== undefined) {
-                        entityId = String(entity[pkField]);
-                    } else {
-                        // Fallback: try common patterns
-                        entityId = entity.id || 
-                                  entity[`${entityType}_id`] || 
-                                  entity[`${entityType.slice(0, -1)}_id`] ||
-                                  JSON.stringify(entity);
-                    }
-                    
-                    // Only add if we don't already have this entity (deduplicate)
-                    if (!entityCollections[entityType][entityId]) {
-                        entityCollections[entityType][entityId] = entity;
+    // Identify entity type by checking primary keys
+    let entityType = null;
+    for (const type of entityTypes) {
+        const pkField = getPrimaryKey(type, model);
+        if (pkField && obj[pkField] !== undefined) {
+            entityType = type;
+            break;
+        }
+    }
+    
+    if (entityType) {
+        const pkField = getPrimaryKey(entityType, model);
+        const pkValue = obj[pkField];
+        const pkString = String(pkValue);
+        
+        // Make a copy
+        const entity = JSON.parse(JSON.stringify(obj));
+        
+        // Fill in parent foreign key if we have parent context
+        if (parentContext) {
+            const fkField = findForeignKey(entityType, parentContext.parentType, model);
+            if (fkField && entity[fkField] === undefined) {
+                entity[fkField] = parentContext.parentPk;
+            }
+        }
+        
+        // Store in entity store (deduplicate)
+        if (!entityStore[entityType][pkString]) {
+            entityStore[entityType][pkString] = entity;
+        }
+        
+        // Process nested children
+        const children = parentChildMap[entityType];
+        if (children) {
+            for (const [arrayField, childType] of Object.entries(children)) {
+                if (Array.isArray(entity[arrayField])) {
+                    const childContext = {
+                        parentType: entityType,
+                        parentPk: pkValue
+                    };
+                    for (const child of entity[arrayField]) {
+                        flattenToEntityStore(child, childContext, visited);
                     }
                 }
             }
         }
-        // Recursively process nested objects
-        collectEntities(value, entityCollections, entityTypes, model, fieldToEntityMap, visited);
-    }
-}
-
-// Build field-to-entity map from model
-const fieldToEntityMap = buildFieldToEntityMap(model);
-
-// First, collect top-level entities
-for (const entityType of entityTypes) {
-    const entities = data.data[entityType];
-    if (entities && typeof entities === 'object' && !Array.isArray(entities)) {
-        // Merge top-level entities into collections
-        for (const [id, entity] of Object.entries(entities)) {
-            if (!entityCollections[entityType][id]) {
-                entityCollections[entityType][id] = entity;
-            }
+    } else {
+        // Not an entity, recursively process
+        for (const value of Object.values(obj)) {
+            flattenToEntityStore(value, parentContext, visited);
         }
     }
 }
 
-// Then, recursively collect nested entities
-collectEntities(data.data, entityCollections, entityTypes, model, fieldToEntityMap);
+// Flatten the data structure
+console.log('Flattening nested structure to entity store format...');
+for (const [entityType, entities] of Object.entries(data.data)) {
+    if (entities && typeof entities === 'object' && !Array.isArray(entities)) {
+        // Entity store format: { pk: entityData, ... }
+        for (const entity of Object.values(entities)) {
+            flattenToEntityStore(entity, null);
+        }
+    }
+}
 
-// Extract one JSON file per entity class (both top-level and nested)
+// Write each entity type to a JSON file
 let totalEntities = 0;
 for (const entityType of entityTypes) {
-    const entities = entityCollections[entityType];
-    const entityCount = Object.keys(entities).length;
+    const entities = entityStore[entityType];
+    const count = Object.keys(entities).length;
     
-    if (entityCount === 0) {
+    if (count === 0) {
         console.log(`  Skipping ${entityType}: no data found`);
         continue;
     }
     
-    totalEntities += entityCount;
-    
-    // Write all entities of this type to a single file
+    totalEntities += count;
     const outputFile = path.join(OUTPUT_DIR, `${entityType}.json`);
-    fs.writeFileSync(
-        outputFile,
-        JSON.stringify(entities, null, 2)
-    );
-    
-    console.log(`  Extracted ${entityType}: ${entityCount} instances -> ${outputFile}`);
+    fs.writeFileSync(outputFile, JSON.stringify(entities, null, 2));
+    console.log(`  Extracted ${entityType}: ${count} instances -> ${outputFile}`);
 }
 
 console.log(`\nUnpack complete: ${totalEntities} total entities across ${entityTypes.length} entity types.`);
