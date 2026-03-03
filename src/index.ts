@@ -13,17 +13,8 @@ async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ da
   const fetcher = createSmartFetcher(env, assetUrl);
   
   const params = createCacheParams(
-    {
-      env,
-      ctx,
-      cacheKey,
-      fetcher,
-      parse: true
-    },
-    {
-      initial_ttl_ms: INITIAL_TTL_MS,
-      max_ttl_ms: MAX_TTL_MS
-    }
+    { env, ctx, cacheKey, fetcher, parse: true },
+    { initial_ttl_ms: INITIAL_TTL_MS, max_ttl_ms: MAX_TTL_MS }
   );
   
   const result = await getCachedJSON(params);

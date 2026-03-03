@@ -14,12 +14,10 @@ const MAX_TIMESTAMP_HISTORY = 16;
 /**
  * Fetcher function type for getCachedEntity
  * Returns data and etag, with data being null if content hasn't changed (304 response)
- * Can optionally return stale data when network fetch fails (only in MISS case)
  */
 export type EntityFetcher = (
-  oldEtag?: string,
-  staleData?: any
-) => Promise<{ data: string | null | any; etag: string; isStale?: boolean }>;
+  oldEtag?: string
+) => Promise<{ data: string | null; etag: string }>;
 
 /**
  * Cache status enum for getCachedEntity results
@@ -223,55 +221,41 @@ async function updateCaches(
  */
 export const createSmartFetcher = (env: any, url: string): EntityFetcher => {
   return async (
-    oldEtag?: string,
-    staleData?: { data: any }
-  ): Promise<{ data: string | null | any; etag: string; isStale?: boolean }> => {
+    oldEtag?: string
+  ): Promise<{ data: string | null; etag: string }> => {
     const headers: Record<string, string> = {};
     if (oldEtag) headers['If-None-Match'] = oldEtag;
 
-    try {
-      // Use env.ASSETS if available (Cloudflare Pages), otherwise global fetch
-      // Call directly to preserve 'this' binding for env.ASSETS.fetch
-      const response = env.ASSETS?.fetch 
-        ? await env.ASSETS.fetch(new Request(url, { headers }))
-        : await fetch(new Request(url, { headers }));
+    // Use env.ASSETS if available (Cloudflare Pages), otherwise global fetch
+    // Call directly to preserve 'this' binding for env.ASSETS.fetch
+    const response = env.ASSETS?.fetch 
+      ? await env.ASSETS.fetch(new Request(url, { headers }))
+      : await fetch(new Request(url, { headers }));
 
-      // 1. Handle 304 (Not Modified) - Zero CPU/Network Waste
-      if (response.status === 304) {
-        return { data: null, etag: oldEtag! };
-      }
-
-      if (!response.ok) {
-        // Network error - return stale data as-is if available
-        if (staleData !== undefined) {
-          return { data: staleData, etag: oldEtag || '', isStale: true };
-        }
-        throw new Error(`Fetch failed for ${url}: ${response.status}`);
-      }
-
-      const newEtag = response.headers.get('ETag') || '';
-      let body = response.body;
-
-      // 2. Derive Gzip usage from URL or Content-Encoding header
-      const isGzipped = url.match(/\.gz(\?|$)/i) || 
-                       response.headers.get('Content-Encoding') === 'gzip';
-
-      if (isGzipped && body) {
-        body = body.pipeThrough(new DecompressionStream("gzip"));
-      }
-
-      // 3. Convert stream to string
-      const data = await new Response(body).text();
-
-      return { data, etag: newEtag };
-    } catch (error) {
-      // Network error (connection failure, timeout, etc.) - return stale data as-is if available
-      if (staleData !== undefined) {
-        return { data: staleData, etag: oldEtag || '', isStale: true };
-      }
-      // No stale data available, rethrow the error
-      throw error;
+    // Handle 304 (Not Modified) - Zero CPU/Network Waste
+    if (response.status === 304) {
+      return { data: null, etag: oldEtag! };
     }
+
+    if (!response.ok) {
+      throw new Error(`Fetch failed for ${url}: ${response.status}`);
+    }
+
+    const newEtag = response.headers.get('ETag') || '';
+    let body = response.body;
+
+    // Derive Gzip usage from URL or Content-Encoding header
+    const isGzipped = url.match(/\.gz(\?|$)/i) || 
+                     response.headers.get('Content-Encoding') === 'gzip';
+
+    if (isGzipped && body) {
+      body = body.pipeThrough(new DecompressionStream("gzip"));
+    }
+
+    // Convert stream to string
+    const data = await new Response(body).text();
+
+    return { data, etag: newEtag };
   };
 };
 
@@ -317,18 +301,53 @@ function checkL1Cache(
 }
 
 /**
+ * Trigger background cache refresh
+ * @param params Cache parameters
+ * @param etag ETag to use for If-None-Match header
+ * @param existingMetadata Optional existing metadata for updateCaches
+ */
+function triggerBackgroundRefresh(
+  params: CacheParams,
+  etag: string,
+  existingMetadata?: { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null
+): void {
+  params.ctx.waitUntil((async () => {
+    try {
+      const { data, etag: newEtag } = await params.fetcher(etag);
+      if (data !== null) {
+        await updateCaches(params, data, newEtag, Date.now(), existingMetadata);
+      }
+      // If 304: The L1 lock keeps this isolate quiet.
+    } catch (e) {
+      L1_CACHE.delete(params.cacheKey);
+    }
+  })());
+}
+
+/**
  * Check L2 cache (KV) for a hit
  * @param l1Status The L1 cache status (MISS_L1 or STALE_L1)
+ * @param l1Entry Optional L1 cache entry (for stale L1 case)
  * @returns GetCachedJSONResult if L2 has data, null if L2 miss
  */
 async function checkL2Cache(
   params: CacheParams,
   now: number,
-  l1Status: CacheStatus.MISS_L1 | CacheStatus.STALE_L1
+  l1Status: CacheStatus.MISS_L1 | CacheStatus.STALE_L1,
+  l1Entry?: { json: any; validatedAt: number; etag: string }
 ): Promise<GetCachedJSONResult | null> {
   // Get L2 cache data from KV
   const { value, metadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
   if (!value) {
+    // L2 MISS: Return stale L1 data if available, trigger background refresh
+    if (l1Status === CacheStatus.STALE_L1 && l1Entry) {
+      triggerBackgroundRefresh(params, l1Entry.etag, null);
+      return {
+        cacheStatus: CacheStatus.STALE_L1_MISS_L2,
+        ttl_ms: 0,
+        data: l1Entry.json
+      };
+    }
     return null;
   }
 
@@ -373,23 +392,7 @@ async function checkL2Cache(
   }
 
   // STALE: Serve old data, revalidate in background
-  params.ctx.waitUntil((async () => {
-    try {
-      const { data, etag } = await params.fetcher(kvEtag);
-      if (data !== null) {
-        await updateCaches(
-          params,
-          data,
-          etag,
-          Date.now(),
-          existingMetadata
-        );
-      }
-      // If 304: The L1 lock at 'now' (set above) keeps this isolate quiet.
-    } catch (e) {
-      L1_CACHE.delete(params.cacheKey);
-    }
-  })());
+  triggerBackgroundRefresh(params, kvEtag, existingMetadata);
 
   // Return combined state for stale L2
   const combinedStatus = l1Status === CacheStatus.MISS_L1 
@@ -400,6 +403,8 @@ async function checkL2Cache(
 
 /**
  * Handle cache MISS case with network fallback
+ * Only handles MISS_L1_MISS_L2 (STALE_L1_MISS_L2 is handled in checkL2Cache)
+ * Waits for network response (not background)
  * @param l1Status The L1 cache status (MISS_L1 or STALE_L1)
  * @returns GetCachedJSONResult
  */
@@ -409,72 +414,50 @@ async function handleMiss(
   now: number,
   l1Status: CacheStatus.MISS_L1 | CacheStatus.STALE_L1
 ): Promise<GetCachedJSONResult> {
-  // Check for stale data from L1 (if available and stale)
-  let staleDataParam: any;
-  let oldEtag: string | undefined;
-
-  // Use L1 value if available (already checked above, but was stale)
-  if (l1) {
-    staleDataParam = l1.json;
-    oldEtag = l1.etag;
+  // Note: STALE_L1_MISS_L2 is handled in checkL2Cache, so this should only be MISS_L1_MISS_L2
+  // But we keep the check for defensive programming
+  if (l1Status === CacheStatus.STALE_L1 && l1) {
+    return {
+      cacheStatus: CacheStatus.STALE_L1_MISS_L2,
+      ttl_ms: 0,
+      data: l1.json
+    };
   }
 
-  let fetchResult: { data: string | null | any; etag: string; isStale?: boolean } | null = null;
-  let fetchError: Error | null = null;
+  // Wait for network response (MISS_L1_MISS_L2 case)
+  // Note: L1 is MISS, so no ETag available
+  // The fetcher will throw on network errors
+  const fetchResult = await params.fetcher();
 
-  try {
-    fetchResult = await params.fetcher(oldEtag, staleDataParam);
-
-    // Only return fresh data if not stale
-    if (!fetchResult.isStale) {
-      // Fetcher returned fresh data (must be string) - store in caches
-      // Get existing metadata to calculate effective TTL
-      const { metadata: existingMetadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
-      const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null;
-      const l1Data = await updateCaches(
-        params,
-        fetchResult.data as string,
-        fetchResult.etag,
-        now,
-        metadata
-      );
-      // Calculate effective TTL for return value (convert minutes to milliseconds)
-      const timestamps = metadata?.updateTimestamps || [];
-      // Convert current timestamp to minutes
-      const nowMinutes = Math.floor(now / (60 * 1000));
-      // Limit to MAX_TIMESTAMP_HISTORY due to 1kB metadata size constraint
-      const maxTimestamps = Math.min(params.timestampHistoryCount, MAX_TIMESTAMP_HISTORY);
-      const updatedTimestamps = [...timestamps, nowMinutes].slice(-maxTimestamps);
-      const effectiveTTLMinutes = calculateEffectiveTTL(updatedTimestamps, params.initial_ttl_ms, params.max_ttl_ms, true);
-      let effectiveTTL = effectiveTTLMinutes * 60 * 1000; // Convert to milliseconds for return value
-      // Clamp by max_ttl_ms when applying (stored value can exceed max_ttl)
-      effectiveTTL = Math.min(effectiveTTL, params.max_ttl_ms);
-      // Return combined state: both L1 and L2 missed, fetched from network
-      const combinedStatus = l1Status === CacheStatus.MISS_L1 
-        ? CacheStatus.MISS_L1_MISS_L2 
-        : CacheStatus.STALE_L1_MISS_L2;
-      return { cacheStatus: combinedStatus, ttl_ms: effectiveTTL, data: l1Data };
-    }
-  } catch (error) {
-    fetchError = error instanceof Error ? error : new Error(String(error));
-  } finally {
-    // Return stale data if fetcher returned it or if there was an error
-    if ((fetchResult?.isStale || fetchError) && staleDataParam) {
-      return {
-        cacheStatus: CacheStatus.STALE_REVALIDATING,
-        ttl_ms: 0,
-        data: staleDataParam.data
-      };
-    }
-  }
-
-  // If there was an error and no stale data, rethrow
-  if (fetchError) {
-    throw fetchError;
-  }
-
-  // This should never be reached, but TypeScript needs it
-  throw new Error('Unexpected state in getCachedJSON');
+  // Fetcher returned fresh data (must be string) - store in caches
+  // Get existing metadata to calculate effective TTL
+  const { metadata: existingMetadata } = await params.env.CACHE_KV.getWithMetadata(params.cacheKey, "text");
+  const metadata = existingMetadata as { cachedAt?: number; etag?: string; writeCount?: number; updateTimestamps?: number[]; effective_ttl_minutes?: number } | null;
+  const l1Data = await updateCaches(
+    params,
+    fetchResult.data as string,
+    fetchResult.etag,
+    now,
+    metadata
+  );
+  
+  // Calculate effective TTL for return value (convert minutes to milliseconds)
+  const timestamps = metadata?.updateTimestamps || [];
+  // Convert current timestamp to minutes
+  const nowMinutes = Math.floor(now / (60 * 1000));
+  // Limit to MAX_TIMESTAMP_HISTORY due to 1kB metadata size constraint
+  const maxTimestamps = Math.min(params.timestampHistoryCount, MAX_TIMESTAMP_HISTORY);
+  const updatedTimestamps = [...timestamps, nowMinutes].slice(-maxTimestamps);
+  const effectiveTTLMinutes = calculateEffectiveTTL(updatedTimestamps, params.initial_ttl_ms, params.max_ttl_ms, true);
+  let effectiveTTL = effectiveTTLMinutes * 60 * 1000; // Convert to milliseconds for return value
+  // Clamp by max_ttl_ms when applying (stored value can exceed max_ttl)
+  effectiveTTL = Math.min(effectiveTTL, params.max_ttl_ms);
+  
+  // Return combined state: both L1 and L2 missed, fetched from network
+  const combinedStatus = l1Status === CacheStatus.MISS_L1 
+    ? CacheStatus.MISS_L1_MISS_L2 
+    : CacheStatus.STALE_L1_MISS_L2;
+  return { cacheStatus: combinedStatus, ttl_ms: effectiveTTL, data: l1Data };
 }
 
 /**
@@ -496,7 +479,7 @@ export async function getCachedJSON(
   const l1Status = l1Result.cacheStatus as CacheStatus.MISS_L1 | CacheStatus.STALE_L1;
 
   // 2. L2 HIT (KV)
-  const l2Result = await checkL2Cache(params, now, l1Status);
+  const l2Result = await checkL2Cache(params, now, l1Status, l1Result.l1Entry);
   if (l2Result) {
     return l2Result;
   }
