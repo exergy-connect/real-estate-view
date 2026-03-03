@@ -58,12 +58,14 @@ export async function handleGetCacheStats(
     // List all keys in the KV namespace
     const keys: string[] = [];
     let cursor: string | undefined;
+    let listComplete = false;
     
-    do {
+    while (!listComplete) {
       const listResult = await kv.list({ cursor });
       keys.push(...listResult.keys.map((k: any) => k.name));
-      cursor = listResult.list_complete ? undefined : listResult.cursor;
-    } while (cursor);
+      listComplete = listResult.list_complete;
+      cursor = listResult.cursor;
+    }
 
     // Fetch metadata for each key
     const metadataPromises = keys.map(async (key) => {
