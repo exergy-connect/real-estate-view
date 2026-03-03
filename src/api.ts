@@ -1,9 +1,12 @@
-import { getCachedJSON, CacheStatus, createSmartFetcher } from './cache';
+import { CacheStatus, loadCachedData } from './cache';
 import { handleMCPRequest } from './mcp/index';
 
+// TTL configuration for cached data
+const INITIAL_TTL_MS = 300 * 1000; // 5 minutes
+const MAX_TTL_MS = 3600 * 1000;    // 1 hour
+
 // Define a simple type for our handlers
-type LoadCachedDataFn = () => Promise<any>;
-type Handler = (request: Request, env: any, loadCachedData?: LoadCachedDataFn, startTime?: number, ctx?: any) => Promise<Response>;
+type Handler = (request: Request, env: any, ctx?: any) => Promise<Response>;
 
 /**
  * Creates Server-Timing header value from performance metrics
@@ -83,9 +86,15 @@ async function getEntity(request: Request, env: any, id: string): Promise<{ enti
 
 
 export const apiRoutes: Record<string, Handler> = {
-  "/api": async (req, env, loadCachedData, startTime) => {
-    const ioStart = startTime || performance.now();
-    const { data: cachedData, cacheStatus } = await loadCachedData!();
+  "/api": async (req, env, ctx) => {
+    const url = new URL(req.url);
+    const assetUrl = new URL("output/consolidated_data.json.gz", url.origin).toString();
+    const ioStart = performance.now();
+    const { data: cachedData, cacheStatus } = await loadCachedData(assetUrl, env, ctx, {
+      initial_ttl_ms: INITIAL_TTL_MS,
+      max_ttl_ms: MAX_TTL_MS,
+      parse: true,
+    });
     const ioEnd = performance.now();
     const ioMs = ioEnd - ioStart;
     
@@ -98,9 +107,15 @@ export const apiRoutes: Record<string, Handler> = {
     
     return new Response(jsonString, { headers });
   },
-  "/api/compute": async (req, env, loadCachedData, startTime) => {
-    const ioStart = startTime || performance.now();
-    const { data, cacheStatus } = await loadCachedData!();
+  "/api/compute": async (req, env, ctx) => {
+    const url = new URL(req.url);
+    const assetUrl = new URL("output/consolidated_data.json.gz", url.origin).toString();
+    const ioStart = performance.now();
+    const { data, cacheStatus } = await loadCachedData(assetUrl, env, ctx, {
+      initial_ttl_ms: INITIAL_TTL_MS,
+      max_ttl_ms: MAX_TTL_MS,
+      parse: true,
+    });
     const ioMs = performance.now() - ioStart;
     
     // Get request body if present (for POST/PUT requests)
@@ -115,7 +130,6 @@ export const apiRoutes: Record<string, Handler> = {
     }
     
     // Get query parameters
-    const url = new URL(req.url);
     const queryParams = Object.fromEntries(url.searchParams);
     
     // Modify response based on request
@@ -156,7 +170,7 @@ export const apiRoutes: Record<string, Handler> = {
     
     return new Response(JSON.stringify(modifiedData), { headers });
   },
-  "/api/status": async (req, env, loadCachedData, startTime) => {
+  "/api/status": async (req, env, ctx) => {
     const cpuStart = performance.now();
     // Minimal CPU work
     const cpuMs = performance.now() - cpuStart;
@@ -166,7 +180,7 @@ export const apiRoutes: Record<string, Handler> = {
       headers: createResponseHeaders('text/plain', 0, cpuMs)
     });
   },
-  "/api/entity": async (req, env, loadCachedData, startTime) => {
+  "/api/entity": async (req, env, ctx) => {
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
     
@@ -187,7 +201,7 @@ export const apiRoutes: Record<string, Handler> = {
       );
     }
   },
-  "/api/github/pr": async (req, env, loadCachedData, startTime) => {
+  "/api/github/pr": async (req, env, ctx) => {
     // Only allow POST requests
     if (req.method !== 'POST') {
       return createErrorResponse('Method not allowed. Use POST.', 405);
@@ -372,7 +386,7 @@ export const apiRoutes: Record<string, Handler> = {
       );
     }
   },
-  "/api/mcp/sse": async (req, env, loadCachedData, startTime, ctx) => {
+  "/api/mcp/sse": async (req, env, ctx) => {
     return handleMCPRequest(req, env, ctx);
   }
 };

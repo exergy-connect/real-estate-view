@@ -1,26 +1,4 @@
 import { apiRoutes } from './api';
-import { getCachedJSON, CacheStatus, createSmartFetcher, createCacheParams } from './cache';
-
-// TTL configuration for cached data
-const INITIAL_TTL_MS = 300 * 1000; // 5 minutes
-const MAX_TTL_MS = 3600 * 1000;    // 1 hour
-
-async function loadCachedData(env: any, ctx: any, baseUrl: string): Promise<{ data: any; cacheStatus: CacheStatus }> {
-  const cacheKey = "consolidated_data.json";
-  const assetUrl = new URL("output/consolidated_data.json.gz", baseUrl).toString();
-  
-  // Create a smart fetcher that handles ETag revalidation and Gzip decompression
-  const fetcher = createSmartFetcher(env, assetUrl);
-  
-  const params = createCacheParams(
-    { env, ctx, cacheKey, fetcher, parse: true },
-    { initial_ttl_ms: INITIAL_TTL_MS, max_ttl_ms: MAX_TTL_MS }
-  );
-  
-  const result = await getCachedJSON(params);
-  
-  return { data: result.data, cacheStatus: result.cacheStatus };
-}
 
 export default {
   async fetch(request: Request, env: any, ctx: any) {
@@ -58,10 +36,7 @@ export default {
 
     if (handler) {
       try {
-        const startTime = performance.now();
-        // Create a lazy-loading function for handlers that need cached data
-        const loadCachedDataFn = async () => await loadCachedData(env, ctx, url.origin);
-        return await handler(request, env, loadCachedDataFn, startTime, ctx);
+        return await handler(request, env, ctx);
       } catch (error) {
         console.error('Error handling API route:', error);
         const errorDetails = {

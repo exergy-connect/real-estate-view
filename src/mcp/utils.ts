@@ -81,3 +81,4 @@ export function sendJSONRPCResponse(
   };
   return new Response(JSON.stringify(response), { headers });
 }
+

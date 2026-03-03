@@ -1,4 +1,4 @@
-import { CacheStatus, getCachedJSON, createSmartFetcher } from '../../cache';
+import { CacheStatus, loadCachedData } from '../../cache';
 import { loadCachedModel } from './get_model';
 
 /**
@@ -59,25 +59,20 @@ export async function loadCachedEntity(
   ctx: any,
   baseUrl: string
 ): Promise<{ entityData: Record<string, any>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
-  const cacheKey = `entity_${entityName}.json`;
-  const initial_ttl_ms = 3600 * 1000; // 1 hour in milliseconds
-  const max_ttl_ms = 7200 * 1000; // 2 hours in milliseconds
-  const timestampHistoryCount = 3;
   const assetUrl = new URL(`output/data/entities/${entityName}.json`, baseUrl).toString();
-  
-  // Create a smart fetcher that handles ETag revalidation
-  const fetcher = createSmartFetcher(env, assetUrl);
-  
-  const ioStart = performance.now();
-  const result = await getCachedJSON({ env, ctx, cacheKey, initial_ttl_ms, max_ttl_ms, timestampHistoryCount, fetcher, parse: true }); // Parse JSON
-  const ioMs = performance.now() - ioStart;
+  const result = await loadCachedData(assetUrl, env, ctx, {
+    initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
+    max_ttl_ms: 7200 * 1000, // 2 hours in milliseconds
+    parse: true,
+    timestampHistoryCount: 3,
+  });
   
   // Entity files are stored as { pk_string: entity_data, ... }
   const entityData = result.data || {};
   
   return {
     entityData: entityData || {},
-    ioMs,
+    ioMs: result.ioMs,
     cpuMs: 0, // No CPU time needed for formatting (already parsed)
     cacheStatus: result.cacheStatus
   };

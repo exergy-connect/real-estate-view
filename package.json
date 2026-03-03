@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "jmespath": "^0.16.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241106.0",

@@ -598,3 +598,61 @@ export async function getCachedJSON(
   // Use L1 entry from result if available (for stale L1 case)
   return handleMiss(params, l1Result.l1Entry, now, l1Status);
 }
+
+/**
+ * Derives cache key from URL by extracting the base filename
+ * Example: "https://example.com/path/to/file.json.gz" -> "file.json"
+ */
+function deriveCacheKeyFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    // Get the last segment of the path
+    const filename = pathname.split('/').pop() || 'data.json';
+    // Remove .gz extension if present (but keep .json)
+    return filename.replace(/\.gz$/, '');
+  } catch (error) {
+    // If URL parsing fails, throw an error
+    throw new Error(`Invalid URL: ${url}. ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Generic function to load cached data from a URL
+ * Derives cacheKey automatically from the URL filename
+ */
+export async function loadCachedData(
+  assetUrl: string | URL,
+  env: any,
+  ctx: any,
+  options?: {
+    initial_ttl_ms?: number;
+    max_ttl_ms?: number;
+    parse?: boolean;
+    timestampHistoryCount?: number;
+  }
+): Promise<{ data: any; ioMs: number; cacheStatus: CacheStatus }> {
+  const urlString = typeof assetUrl === 'string' ? assetUrl : assetUrl.toString();
+  const cacheKey = deriveCacheKeyFromUrl(urlString);
+  
+  const {
+    initial_ttl_ms = 300 * 1000, // 5 minutes default
+    max_ttl_ms = 3600 * 1000,    // 1 hour default
+    parse = true,
+    timestampHistoryCount = 5,
+  } = options || {};
+  
+  // Create a smart fetcher that handles ETag revalidation and Gzip decompression
+  const fetcher = createSmartFetcher(env, urlString);
+  
+  const params = createCacheParams(
+    { env, ctx, cacheKey, fetcher, parse },
+    { initial_ttl_ms, max_ttl_ms, timestampHistoryCount }
+  );
+  
+  const ioStart = performance.now();
+  const result = await getCachedJSON(params);
+  const ioMs = performance.now() - ioStart;
+  
+  return { data: result.data, ioMs, cacheStatus: result.cacheStatus };
+}

@@ -1,4 +1,4 @@
-import { CacheStatus, getCachedJSON, createSmartFetcher, createCacheParams } from '../../cache';
+import { CacheStatus, loadCachedData } from '../../cache';
 
 /**
  * Tool definition for get_model
@@ -50,27 +50,16 @@ export async function loadCachedModel(
   ctx: any,
   baseUrl: string
 ): Promise<{ model: string; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
-  const cacheKey = "consolidated_model.json";
   const assetUrl = new URL("output/consolidated_model.json", baseUrl).toString();
-  
-  // Create a smart fetcher that handles ETag revalidation and Gzip decompression
-  const fetcher = createSmartFetcher(env, assetUrl);
-  
-  const params = createCacheParams(
-    { env, ctx, cacheKey, fetcher, parse: false },
-    {
-      initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
-      max_ttl_ms: 8 * 3600 * 1000, // 8 hours
-    }
-  );
-  
-  const ioStart = performance.now();
-  const result = await getCachedJSON(params);
-  const ioMs = performance.now() - ioStart;
+  const result = await loadCachedData(assetUrl, env, ctx, {
+    initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
+    max_ttl_ms: 8 * 3600 * 1000, // 8 hours
+    parse: false,
+  });
   
   return {
     model: result.data as string,
-    ioMs,
+    ioMs: result.ioMs,
     cpuMs: 0, // No CPU time needed for formatting
     cacheStatus: result.cacheStatus
   };
