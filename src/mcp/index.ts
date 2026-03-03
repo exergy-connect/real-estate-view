@@ -9,6 +9,18 @@ import { getEntityToolDefinition, handleGetEntity } from './tools/get_entity';
 import { getCorsHeaders, normalizeRequestId, sendJSONRPCResponse, createServerTimingHeader } from './utils';
 import { createSSEStream, cleanupSessions, sendSSEMessage } from './sse';
 
+/**
+ * Creates aggressive cache-busting headers to prevent any caching
+ */
+function getNoCacheHeaders(): Record<string, string> {
+  return {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  };
+}
+
 // Helper to pass sendSSEMessage to sendJSONRPCResponse
 const sendJSONRPCWithSSE = (
   id: string | number,
@@ -118,8 +130,8 @@ export async function handleMCPRequest(
       return new Response(stream, {
         headers: {
           'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache, no-transform',
           'Connection': 'keep-alive',
+          ...getNoCacheHeaders(),
           ...getCorsHeaders()
         }
       });
@@ -136,6 +148,7 @@ export async function handleMCPRequest(
         headers: {
           'Content-Type': 'application/json',
           'X-Deployment-Version': deploymentVersion,
+          ...getNoCacheHeaders(),
           ...getCorsHeaders()
         }
       });
