@@ -8,7 +8,7 @@ import { getModelToolDefinition, handleGetModel } from './tools/get_model';
 import { getEntityToolDefinition, handleGetEntity } from './tools/get_entity';
 import { getCacheStatsToolDefinition, handleGetCacheStats } from './tools/get_cache_stats';
 import { jmespathQueryToolDefinition, handleJmespathQuery } from './tools/jmespath_query';
-import { createEntitiesToolDefinition, handleCreateEntities } from './tools/create_entities';
+import { proposeEntityChangesToolDefinition, handleProposeEntityChanges } from './tools/propose_entity_changes';
 import { getCorsHeaders, normalizeRequestId, sendJSONRPCResponse, createServerTimingHeader } from './utils';
 import { createSSEStream, cleanupSessions, sendSSEMessage } from './sse';
 
@@ -61,7 +61,7 @@ const server = new McpServer(
 // Set up MCP server handlers using the underlying Server instance
 server.server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
-    tools: [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition(), jmespathQueryToolDefinition(), createEntitiesToolDefinition()]
+    tools: [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition(), jmespathQueryToolDefinition(), proposeEntityChangesToolDefinition()]
   };
 });
 
@@ -87,8 +87,8 @@ async function handleToolCallWithContext(
     return await handleJmespathQuery(args, context);
   }
   
-  if (name === 'create_entities') {
-    return await handleCreateEntities(args, context);
+  if (name === 'propose_entity_changes') {
+    return await handleProposeEntityChanges(args, context);
   }
   
   throw new Error(`Unknown tool: ${name}`);
@@ -239,7 +239,7 @@ export async function handleMCPRequest(
       }
       
       if (requestData.method === 'tools/list') {
-        const tools = [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition(), jmespathQueryToolDefinition(), createEntitiesToolDefinition()];
+        const tools = [getModelToolDefinition(), getEntityToolDefinition(), getCacheStatsToolDefinition(), jmespathQueryToolDefinition(), proposeEntityChangesToolDefinition()];
         const deploymentVersion = getDeploymentVersion(env);
         return sendJSONRPCWithSSE(requestId, sessionId, {
           result: { 

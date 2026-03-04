@@ -15,7 +15,9 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "DEPLOYMENT_VERSION": "20260302-1" // Deployment version: YYYYMMDD-revision (update revision for each deployment on same day)
+    "DEPLOYMENT_VERSION": "20260302-1", // Deployment version: YYYYMMDD-revision (update revision for each deployment on same day)
+    "GITHUB_REPO": "exergy-connect/real-estate",
+    "GITHUB_DATA_BASE_PATH": "har_model/data"
   },
   "kv_namespaces": [
     {
