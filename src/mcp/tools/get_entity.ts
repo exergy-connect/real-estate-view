@@ -1,4 +1,4 @@
-import { CacheStatus, loadCachedData } from '../../cache';
+import { CacheStatus, CacheParams, loadCachedData } from '../../cache';
 import { loadCachedModel } from './get_model';
 
 /**
@@ -58,7 +58,7 @@ export async function loadCachedEntity(
   env: any,
   ctx: any,
   baseUrl: string
-): Promise<{ entityData: Record<string, any>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
+): Promise<{ entityData: Record<string, any>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus; params: CacheParams }> {
   const assetUrl = new URL(`output/data/entities/${entityName}.json`, baseUrl).toString();
   const result = await loadCachedData(assetUrl, env, ctx, {
     initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
@@ -74,7 +74,8 @@ export async function loadCachedEntity(
     entityData: entityData || {},
     ioMs: result.ioMs,
     cpuMs: 0, // No CPU time needed for formatting (already parsed)
-    cacheStatus: result.cacheStatus
+    cacheStatus: result.cacheStatus,
+    params: result.params
   };
 }
 
@@ -321,7 +322,7 @@ export async function handleGetEntity(
       }],
       ioMs: 0,
       cpuMs: 0,
-      cacheStatus: CacheStatus.MISS
+      cacheStatus: CacheStatus.ERROR
     };
   }
 }
