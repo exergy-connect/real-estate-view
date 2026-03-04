@@ -60,6 +60,7 @@ export async function loadCachedEntity(
   baseUrl: string
 ): Promise<{ entityData: Record<string, any>; ioMs: number; cpuMs: number; cacheStatus: CacheStatus }> {
   const assetUrl = new URL(`output/data/entities/${entityName}.json`, baseUrl).toString();
+  
   const result = await loadCachedData(assetUrl, env, ctx, {
     initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
     max_ttl_ms: 7200 * 1000, // 2 hours in milliseconds
@@ -321,7 +322,7 @@ export async function handleGetEntity(
       }],
       ioMs: 0,
       cpuMs: 0,
-      cacheStatus: CacheStatus.MISS
+      cacheStatus: CacheStatus.ERROR
     };
   }
 }
