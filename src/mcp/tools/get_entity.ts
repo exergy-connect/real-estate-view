@@ -88,11 +88,10 @@ async function loadModelSchema(
   ctx: any,
   baseUrl: string
 ): Promise<{ schema: any; ioMs: number }> {
-  const result = await loadCachedModel(env, ctx, baseUrl);
-  // Parse the model JSON string
-  const schema = JSON.parse(result.model);
+  // Always parse for this use case
+  const result = await loadCachedModel(env, ctx, baseUrl, true);
   return {
-    schema,
+    schema: result.model,
     ioMs: result.ioMs
   };
 }

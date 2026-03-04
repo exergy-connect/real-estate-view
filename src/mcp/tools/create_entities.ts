@@ -114,10 +114,9 @@ export async function handleCreateEntities(
   const { entities, ai_reasoning, session_id } = args;
 
   try {
-    // Load model to get consolidated schema
-    const modelResult = await loadCachedModel(context.env, context.ctx, context.origin);
-    const modelSchemaStr = modelResult.model;
-    const modelSchema = typeof modelSchemaStr === 'string' ? JSON.parse(modelSchemaStr) : modelSchemaStr;
+    // Load model to get consolidated schema (always parse for this use case)
+    const modelResult = await loadCachedModel(context.env, context.ctx, context.origin, true);
+    const modelSchema = modelResult.model;
     const ioMs = performance.now() - ioStart;
 
     const cpuStart = performance.now();
