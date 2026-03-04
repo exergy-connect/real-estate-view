@@ -633,15 +633,15 @@ export async function loadCachedData(
   const {
     initial_ttl_ms = 300 * 1000, // 5 minutes default
     max_ttl_ms = 3600 * 1000,    // 1 hour default
-    process = ((raw: string | null) => raw ? JSON.parse(raw) : null), // Default: parse JSON, return null if null
+    process, // undefined means no parsing (identity function)
     timestampHistoryCount = 5,
   } = options || {};
   
   // Create a smart fetcher that handles ETag revalidation and Gzip decompression
   const fetcher = createSmartFetcher(env, urlString);
   
-  // Wrap process function to ensure it accepts string | null
-  const wrappedProcess = process || ((raw: string | null) => raw ? JSON.parse(raw) : null);
+  // Use process function if provided, otherwise use identity function (no parsing)
+  const wrappedProcess = process || ((raw: string | null) => raw);
   
   const params = createCacheParams(
     { env, ctx, cacheKey, fetcher, process: wrappedProcess },

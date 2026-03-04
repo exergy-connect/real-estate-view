@@ -55,7 +55,7 @@ export async function loadCachedModel(
   const result = await loadCachedData(assetUrl, env, ctx, {
     initial_ttl_ms: 3600 * 1000, // 1 hour in milliseconds
     max_ttl_ms: 8 * 3600 * 1000, // 8 hours
-    process: parse ? JSON.parse : undefined, // Parse JSON when needed, otherwise keep as string
+    process: parse ? JSON.parse : undefined, // undefined means no parsing (identity function)
   });
   
   return {
@@ -270,11 +270,33 @@ export async function handleGetModel(
   // Special case: depth=-1 - just return the raw string
   // The string already includes all metadata, so we can return it directly
   if (isFullModel) {
+    // Ensure we have a string (in case it was cached as an object from a previous parse)
+    let modelString: string;
+    if (result.model === undefined || result.model === null) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            error: 'Failed to load model',
+            message: 'Model data is undefined or null'
+          }, null, 2),
+          isError: true
+        }],
+        ioMs: result.ioMs,
+        cpuMs: 0,
+        cacheStatus: result.cacheStatus
+      };
+    } else if (typeof result.model === 'string') {
+      modelString = result.model;
+    } else {
+      modelString = JSON.stringify(result.model, null, 2);
+    }
+    
     return {
       content: [
         {
           type: 'text',
-          text: result.model as string
+          text: modelString
         }
       ],
       ioMs: result.ioMs,
