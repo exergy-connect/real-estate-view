@@ -17,7 +17,8 @@
   "vars": {
     "DEPLOYMENT_VERSION": "20260302-1", // Deployment version: YYYYMMDD-revision (update revision for each deployment on same day)
     "GITHUB_REPO": "exergy-connect/real-estate",
-    "GITHUB_DATA_BASE_PATH": "har_model/data"
+    "GITHUB_DATA_BASE_PATH": "har_model/data",
+    "GITHUB_BASE_BRANCH": "master" // Base branch for GitHub PRs (main or master)
   },
   "kv_namespaces": [
     {

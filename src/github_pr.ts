@@ -42,8 +42,11 @@ export async function createGitHubPR(
   const REPO = options.repository || "exergy-connect/real-estate-view";
   const apiBase = `https://api.github.com/repos/${REPO}`;
 
-  // 1. Fetch the latest commit SHA from the main branch
-  const mainRefResponse = await fetch(`${apiBase}/git/refs/heads/main`, {
+  // Get base branch from environment variable (default: main)
+  const baseBranch = (env as any).GITHUB_BASE_BRANCH || 'main';
+
+  // 1. Fetch the latest commit SHA from the base branch
+  const mainRefResponse = await fetch(`${apiBase}/git/refs/heads/${baseBranch}`, {
     headers: { 
       'Authorization': `token ${GITHUB_TOKEN}`, 
       'User-Agent': 'Cloudflare-Worker',
@@ -53,7 +56,7 @@ export async function createGitHubPR(
 
   if (!mainRefResponse.ok) {
     const errorText = await mainRefResponse.text();
-    throw new Error(`Failed to fetch main branch: ${mainRefResponse.status} ${errorText}`);
+    throw new Error(`Failed to fetch base branch '${baseBranch}': ${mainRefResponse.status} ${errorText}`);
   }
 
   const mainRef = await mainRefResponse.json();
@@ -140,8 +143,8 @@ export async function createGitHubPR(
     body: JSON.stringify({
       title: options.prTitle,
       body: options.prBody,
-      head: options.branchName,
-      base: 'main'
+          head: options.branchName,
+          base: baseBranch
     })
   });
 
