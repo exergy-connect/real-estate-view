@@ -1,5 +1,6 @@
 import { CacheStatus, loadCachedData } from './cache';
 import { handleMCPRequest } from './mcp/index';
+import { getEntityResponse, isGetEntityResponseError } from './mcp/tools/get_entity';
 
 // TTL configuration for cached data
 const INITIAL_TTL_MS = 300 * 1000; // 5 minutes
@@ -61,26 +62,27 @@ export function createErrorResponse(error: string, status: number, message?: str
   });
 }
 
-async function getEntity(request: Request, env: any, id: string): Promise<{ entity: any; ioMs: number; cpuMs: number }> {
-  // 1. Get the origin (e.g., https://houston-api.antonio.workers.dev)
-  const { origin } = new URL(request.url);
-  
-  // 2. Combine the origin with your path to make it absolute
-  const assetUrl = `${origin}/output/data/entities/${id}.json`;
-  
-  // 3. I/O: Fetch the asset
-  const ioStart = performance.now();
-  const response = await env.ASSETS.fetch(new Request(assetUrl));
-  const ioMs = performance.now() - ioStart;
-  
-  if (!response.ok) throw new Error(`Entity ${id} not found at ${assetUrl}`);
-  
-  // 4. CPU: Parse JSON
-  const cpuStart = performance.now();
-  const entity = await response.json();
-  const cpuMs = performance.now() - cpuStart;
-  
-  return { entity, ioMs, cpuMs };
+/**
+ * Compute a weak ETag from a string (e.g. JSON body) using SHA-256.
+ * Returns W/"<base64url>" for weak comparison.
+ */
+async function weakEtagFromString(value: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(value);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
+  const base64 = btoa(String.fromCharCode(...hashArray)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `W/"${base64}"`;
+}
+
+/**
+ * Weak ETag comparison: strip optional W/ prefix and compare case-insensitively.
+ */
+function etagMatches(ifNoneMatch: string | null, currentEtag: string): boolean {
+  if (!ifNoneMatch) return false;
+  const normalize = (s: string) => s.replace(/^\s*W\//i, '').replace(/"|'\s*$/g, '').trim().toLowerCase();
+  const current = normalize(currentEtag);
+  return ifNoneMatch.split(',').some((v) => normalize(v.trim()) === current);
 }
 
 
@@ -182,24 +184,47 @@ export const apiRoutes: Record<string, Handler> = {
   },
   "/api/entity": async (req, env, ctx) => {
     const url = new URL(req.url);
-    const id = url.searchParams.get("id");
-    
-    if (!id) {
-      return createErrorResponse("Missing 'id' parameter", 400);
+    const entityName = url.searchParams.get("entity") ?? url.searchParams.get("id");
+    const depthParam = url.searchParams.get("depth");
+    const depth = depthParam !== null ? parseInt(depthParam, 10) : 1;
+    const ifNoneMatch = req.headers.get("If-None-Match");
+
+    if (!entityName) {
+      return createErrorResponse("Missing 'entity' or 'id' parameter", 400);
     }
-    
-    try {
-      const { entity, ioMs, cpuMs } = await getEntity(req, env, id);
-      
-      return new Response(JSON.stringify(entity), {
-        headers: createResponseHeaders('application/json', ioMs, cpuMs)
-      });
-    } catch (error) {
+    if (Number.isNaN(depth) || depth < 0 || depth > 10) {
+      return createErrorResponse("Invalid 'depth' (0-10)", 400);
+    }
+
+    const origin = new URL(req.url).origin;
+    const result = await getEntityResponse(entityName, depth, { env, ctx, origin });
+
+    if (isGetEntityResponseError(result)) {
       return createErrorResponse(
-        error instanceof Error ? error.message : "Entity not found",
-        404
+        result.body?.error ?? "Entity not found",
+        result.status,
+        result.body?.message
       );
     }
+
+    const body = JSON.stringify(result.response);
+    const etag = await weakEtagFromString(body);
+
+    if (etagMatches(ifNoneMatch, etag)) {
+      const headers: Record<string, string> = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate",
+        ...getCorsHeaders()
+      };
+      return new Response(null, { status: 304, headers });
+    }
+
+    const headers = createResponseHeaders("application/json", result.ioMs, result.cpuMs, result.cacheStatus);
+    headers["ETag"] = etag;
+    headers["Cache-Control"] = "private, max-age=0, must-revalidate";
+    headers["X-Cache-Status"] = result.cacheStatus;
+
+    return new Response(body, { headers });
   },
   "/api/github/pr": async (req, env, ctx) => {
     // Only allow POST requests

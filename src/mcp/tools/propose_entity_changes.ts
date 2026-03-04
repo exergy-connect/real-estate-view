@@ -266,7 +266,7 @@ export async function handleProposeEntityChanges(
       const commitMessage = `${isUpdate ? 'Update' : 'Create'} ${entityType} entities`;
       const prTitle = `${isUpdate ? 'Update' : 'Create'} ${entityType} entities`;
       const action = isUpdate ? 'updates' : 'adds';
-      const prBody = `This PR ${action} ${created.length} ${entityType} entity/entities.\n\n${isUpdate ? 'Updated' : 'Created'} entities:\n${created.map(c => `- ${c.primary_key}`).join('\n')}`;
+      const prBody = `This PR ${action} ${created.length} ${entityType} entity/entities.\n\n${isUpdate ? 'Updated' : 'Created'} entities:\n${created.map(c => `- ${c.primary_key}`).join('\n')}\n\n## AI Reasoning\n\n${ai_reasoning}`;
 
       // Convert only entities being processed to YAML format (not existing ones)
       const yamlObject = { [entityType]: entitiesToProcess };

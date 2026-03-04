@@ -83,7 +83,7 @@ export async function loadCachedEntity(
  * Loads the consolidated model to get entity schemas and primary keys
  * Reuses loadCachedModel from get_model.ts to avoid duplication
  */
-async function loadModelSchema(
+export async function loadModelSchema(
   env: any,
   ctx: any,
   baseUrl: string
@@ -99,7 +99,7 @@ async function loadModelSchema(
 /**
  * Recursively filter entity data based on depth parameter
  */
-function filterDepth(
+export function filterDepth(
   entityData: Record<string, any>,
   entityType: string,
   depth: number,
@@ -193,6 +193,121 @@ function filterDepth(
   return result;
 }
 
+export interface GetEntityResponseResult {
+  response: { entity: string; depth: number; result_count: number; results: any[]; updated_prompt?: string };
+  ioMs: number;
+  cpuMs: number;
+  cacheStatus: CacheStatus;
+}
+
+export interface GetEntityResponseError {
+  error: true;
+  status: number;
+  body: any;
+  ioMs: number;
+  cpuMs: number;
+  cacheStatus: CacheStatus;
+}
+
+export function isGetEntityResponseError(
+  r: GetEntityResponseResult | GetEntityResponseError
+): r is GetEntityResponseError {
+  return (r as GetEntityResponseError).error === true;
+}
+
+function entityError(
+  status: number,
+  body: any,
+  ioMs: number = 0,
+  cpuMs: number = 0
+): GetEntityResponseError {
+  return {
+    error: true,
+    status,
+    body,
+    ioMs,
+    cpuMs,
+    cacheStatus: CacheStatus.ERROR
+  };
+}
+
+/**
+ * Shared get_entity logic: load entity + schema, filter by depth, return response object and timing.
+ * Used by both the MCP tool handler and the /api/entity HTTP route.
+ */
+export async function getEntityResponse(
+  entity: string,
+  depth: number,
+  context: { env: any; ctx: any; origin: string }
+): Promise<GetEntityResponseResult | GetEntityResponseError> {
+  if (!entity || typeof entity !== 'string') {
+    return entityError(400, {
+      error: 'Invalid entity parameter',
+      message: 'Entity type must be a non-empty string'
+    });
+  }
+
+  try {
+    const modelResult = await loadModelSchema(context.env, context.ctx, context.origin);
+    const availableEntities = modelResult.schema?.$defs ? Object.keys(modelResult.schema.$defs) : [];
+    const properties = modelResult.schema?.properties || {};
+    const topLevelEntities = Object.keys(properties);
+
+    if (!availableEntities.includes(entity) && !topLevelEntities.includes(entity)) {
+      return entityError(404, {
+        error: `Unknown entity type: ${entity}`,
+        available_entities: topLevelEntities,
+        available_in_model: availableEntities,
+        note: 'Entity names MUST match the model definition exactly. Use lowercase for entity type names.'
+      }, modelResult.ioMs);
+    }
+
+    let entityResult: Awaited<ReturnType<typeof loadCachedEntity>>;
+    try {
+      entityResult = await loadCachedEntity(entity, context.env, context.ctx, context.origin);
+    } catch (err) {
+      return entityError(404, {
+        error: `Failed to load entity: ${entity}`,
+        message: err instanceof Error ? err.message : String(err),
+        available_entities: topLevelEntities,
+        available_in_model: availableEntities
+      }, modelResult.ioMs);
+    }
+
+    const entityStore = entityResult.entityData;
+    const entityInstances = Object.values(entityStore);
+
+    let results: any[];
+    if (depth > 0) {
+      results = entityInstances.map((entityData: any) =>
+        filterDepth(entityData, entity, depth, modelResult.schema)
+      );
+    } else {
+      results = entityInstances;
+    }
+
+    const response = {
+      entity,
+      depth,
+      result_count: results.length,
+      results
+    };
+
+    return {
+      response,
+      ioMs: entityResult.ioMs + modelResult.ioMs,
+      cpuMs: 0,
+      cacheStatus: entityResult.cacheStatus
+    };
+  } catch (err) {
+    return entityError(500, {
+      error: `Failed to retrieve entity '${entity}': ${err instanceof Error ? err.message : String(err)}`,
+      error_type: err instanceof Error ? err.constructor.name : 'Unknown',
+      entity
+    });
+  }
+}
+
 /**
  * Handler for get_entity tool calls
  */
@@ -201,127 +316,26 @@ export async function handleGetEntity(
   context: { env: any; ctx: any; origin: string }
 ): Promise<{ content: Array<{ type: string; text: string; isError?: boolean }>; ioMs: number; cpuMs: number; cacheStatus: any }> {
   const { entity, depth = 1, session_id, updated_prompt, ai_reasoning } = args;
-  
-  if (!entity || typeof entity !== 'string') {
+
+  const result = await getEntityResponse(entity, depth, context);
+
+  if (isGetEntityResponseError(result)) {
+    const response = { ...result.body, updated_prompt: args.updated_prompt };
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: 'Invalid entity parameter',
-          message: 'Entity type must be a non-empty string'
-        }, null, 2),
-        isError: true
-      }],
-      ioMs: 0,
-      cpuMs: 0,
-      cacheStatus: CacheStatus.ERROR
+      content: [{ type: 'text', text: JSON.stringify(response, null, 2), isError: true }],
+      ioMs: result.ioMs,
+      cpuMs: result.cpuMs,
+      cacheStatus: result.cacheStatus
     };
   }
-  
-  try {
-    // Load model schema to understand entity structure
-    const modelResult = await loadModelSchema(context.env, context.ctx, context.origin);
-    
-    // Get available entities from schema
-    const availableEntities = modelResult.schema?.$defs ? Object.keys(modelResult.schema.$defs) : [];
-    const properties = modelResult.schema?.properties || {};
-    const topLevelEntities = Object.keys(properties);
-    
-    // Validate that the entity exists in the model
-    if (!availableEntities.includes(entity) && !topLevelEntities.includes(entity)) {
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            error: `Unknown entity type: ${entity}`,
-            available_entities: topLevelEntities,
-            available_in_model: availableEntities,
-            note: 'Entity names MUST match the model definition exactly. Use lowercase for entity type names.'
-          }, null, 2),
-          isError: true
-        }],
-        ioMs: modelResult.ioMs,
-        cpuMs: 0,
-        cacheStatus: CacheStatus.ERROR
-      };
-    }
-    
-    // Try to load entity data
-    let entityResult;
-    try {
-      entityResult = await loadCachedEntity(entity, context.env, context.ctx, context.origin);
-    } catch (error) {
-      // Entity file not found or load error
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            error: `Failed to load entity: ${entity}`,
-            message: error instanceof Error ? error.message : String(error),
-            available_entities: topLevelEntities,
-            available_in_model: availableEntities
-          }, null, 2),
-          isError: true
-        }],
-        ioMs: modelResult.ioMs,
-        cpuMs: 0,
-        cacheStatus: CacheStatus.ERROR
-      };
-    }
-    
-    // Get entity data (it's stored as {entity_name: {pk: data}} or just {pk: data})
-    const entityStore = entityResult.entityData;
-    const entityInstances = Object.values(entityStore);
-    const entityCount = entityInstances.length;
-    
-    // Filter results based on depth
-    let results: any[];
-    if (depth > 0) {
-      results = entityInstances.map((entityData: any) => 
-        filterDepth(entityData, entity, depth, modelResult.schema)
-      );
-    } else {
-      // Depth 0: return all fields
-      results = entityInstances;
-    }
-    
-    const resultCount = results.length;
-    
-    // Build response
-    const response: any = {
-      entity,
-      depth,
-      result_count: resultCount,
-      results
-    };
-    
-    if (updated_prompt) {
-      response.updated_prompt = updated_prompt;
-    }
-    
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify(response, null, 2)
-      }],
-      ioMs: entityResult.ioMs + modelResult.ioMs,
-      cpuMs: 0,
-      cacheStatus: entityResult.cacheStatus
-    };
-  } catch (error) {
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: `Failed to retrieve entity '${entity}': ${error instanceof Error ? error.message : String(error)}`,
-          error_type: error instanceof Error ? error.constructor.name : 'Unknown',
-          entity
-        }, null, 2),
-        isError: true
-      }],
-      ioMs: 0,
-      cpuMs: 0,
-      cacheStatus: CacheStatus.ERROR
-    };
-  }
+
+  const response: any = { ...result.response };
+  if (updated_prompt) response.updated_prompt = updated_prompt;
+
+  return {
+    content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+    ioMs: result.ioMs,
+    cpuMs: result.cpuMs,
+    cacheStatus: result.cacheStatus
+  };
 }
