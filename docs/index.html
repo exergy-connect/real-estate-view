@@ -572,16 +572,6 @@
             </div>
 
             <div class="filter-group">
-                <label for="visualizationMode">Visualization</label>
-                <select id="visualizationMode">
-                    <option value="property_type">By Property Type</option>
-                    <option value="price">By Price (Gradient)</option>
-                    <option value="sqft">By Square Footage (Gradient)</option>
-                    <option value="days_on_market">By Days on Market (Gradient)</option>
-                </select>
-            </div>
-
-            <div class="filter-group">
                 <label for="areaFilter">Area (City/County)</label>
                 <select id="areaFilter">
                     <option value="">All Areas</option>
@@ -722,6 +712,15 @@
         <div class="map-toggle">
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button id="toggleMapBtn" onclick="toggleMap()">🗺️ Show Map</button>
+                <div id="visualizationModeContainer" style="display: none; align-items: center; gap: 8px;">
+                    <label for="visualizationMode" style="margin: 0; font-weight: 600; font-size: 0.9em; color: #495057;">Visualization</label>
+                    <select id="visualizationMode" style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 1em; background: white;">
+                        <option value="property_type">By Property Type</option>
+                        <option value="price">By Price (Gradient)</option>
+                        <option value="sqft">By Square Footage (Gradient)</option>
+                        <option value="days_on_market">By Days on Market (Gradient)</option>
+                    </select>
+                </div>
                 <button id="toggleFaultsBtn" onclick="toggleFaultPoints()" style="display: none;">🔴 Show Fault Points</button>
                 <button id="toggleAreasBtn" onclick="toggleGeographicAreas()" style="display: none;">📍 Show Geographic Areas</button>
                 <button id="toggleSchoolsBtn" onclick="toggleSchools()" style="display: none;">🏫 Show Schools</button>
@@ -1321,7 +1320,8 @@
             const container = document.getElementById('mapContainer');
             const btn = document.getElementById('toggleMapBtn');
             const faultBtn = document.getElementById('toggleFaultsBtn');
-            
+            const visualizationContainer = document.getElementById('visualizationModeContainer');
+
             const areasBtn = document.getElementById('toggleAreasBtn');
             const schoolsBtn = document.getElementById('toggleSchoolsBtn');
             const clearAreaBtn = document.getElementById('clearAreaFilterBtn');
@@ -1332,6 +1332,7 @@
                 container.classList.remove('active');
                 btn.textContent = '🗺️ Show Map';
                 faultBtn.style.display = 'none';
+                if (visualizationContainer) visualizationContainer.style.display = 'none';
                 areasBtn.style.display = 'none';
                 if (schoolsBtn) schoolsBtn.style.display = 'none';
                 if (clearAreaBtn) clearAreaBtn.style.display = 'none';
@@ -1343,6 +1344,7 @@
                 const isMobile = window.innerWidth <= 768;
                 const displayStyle = isMobile ? 'block' : 'inline-block';
                 faultBtn.style.display = displayStyle;
+                if (visualizationContainer) visualizationContainer.style.display = 'flex';
                 areasBtn.style.display = displayStyle;
                 if (schoolsBtn) schoolsBtn.style.display = displayStyle;
                 if (faultDistanceContainer && actualMaxFaultDistance > 0) {
