@@ -2748,6 +2748,37 @@
             filterProperties();
         }
 
+        // Reset all search filters to default (used when Search profile is set to None)
+        function resetSearchFiltersToDefault() {
+            const opportunityZoneFilter = document.getElementById('opportunityZoneFilter');
+            if (opportunityZoneFilter) opportunityZoneFilter.checked = false;
+
+            const zipcodeFilter = document.getElementById('zipcodeFilter');
+            if (zipcodeFilter) zipcodeFilter.value = '';
+
+            const propertyTypeFilter = document.getElementById('propertyTypeFilter');
+            if (propertyTypeFilter) propertyTypeFilter.value = '';
+
+            const areaFilter = document.getElementById('areaFilter');
+            if (areaFilter) areaFilter.value = '';
+
+            // Reset price and maintenance sliders to full range via populateFilters
+            populateFilters();
+
+            // Reset school grade filters and hide section if open
+            const elementaryMinGrade = document.getElementById('elementaryMinGrade');
+            const middleMinGrade = document.getElementById('middleMinGrade');
+            const highMinGrade = document.getElementById('highMinGrade');
+            if (elementaryMinGrade) elementaryMinGrade.value = '';
+            if (middleMinGrade) middleMinGrade.value = '';
+            if (highMinGrade) highMinGrade.value = '';
+            if (schoolFilterEnabled) toggleSchoolFilter();
+
+            if (typeof updatePriceDisplay === 'function') updatePriceDisplay();
+            if (typeof updateMaintenanceDisplay === 'function') updateMaintenanceDisplay();
+            filterProperties();
+        }
+
         // Store actual max price from data for display
         let actualMaxPrice = 0;
         let actualMaxMaintenance = 0;
@@ -3216,7 +3247,10 @@
         });
         document.getElementById('searchProfileFilter').addEventListener('change', function () {
             const val = this.value;
-            if (!val) return;
+            if (!val) {
+                resetSearchFiltersToDefault();
+                return;
+            }
             const profile = searchProfilesCache.find(function (p) { return p.profile_id === val; });
             if (profile) applySearchProfile(profile);
         });
