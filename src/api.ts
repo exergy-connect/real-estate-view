@@ -37,7 +37,7 @@ function getCorsHeaders(): Record<string, string> {
 /**
  * Creates response headers with Server-Timing and CORS
  */
-function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number, cacheStatus?: CacheStatus): Record<string, string> {
+export function createResponseHeaders(contentType: string, ioMs: number, cpuMs: number, cacheStatus?: CacheStatus): Record<string, string> {
   return {
     'Content-Type': contentType,
     'Server-Timing': createServerTimingHeader(ioMs, cpuMs, cacheStatus),
