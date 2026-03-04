@@ -565,6 +565,13 @@
 
         <div class="filters">
             <div class="filter-group">
+                <label for="searchProfileFilter">Search profile</label>
+                <select id="searchProfileFilter">
+                    <option value="">None</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
                 <label for="visualizationMode">Visualization</label>
                 <select id="visualizationMode">
                     <option value="property_type">By Property Type</option>
@@ -753,6 +760,7 @@
         let propertyMarkers = [];
         let schoolMarkers = [];
         let schoolLines = [];
+        let searchProfilesCache = []; // Full profile objects from /api/entity?entity=search_profile
         let faultData = [];
         let showFaultPoints = false; // Default: hidden
         let geographicAreas = [];
@@ -2655,6 +2663,91 @@
             }
         }
 
+        // Load search profiles from entity API and populate dropdown
+        async function loadSearchProfiles() {
+            const sel = document.getElementById('searchProfileFilter');
+            if (!sel) return;
+            try {
+                const base = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '';
+                const url = base + '/api/entity?entity=search_profile&depth=0';
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const data = await res.json();
+                const results = data.results || [];
+                searchProfilesCache = results;
+                // Keep "None" as first option
+                while (sel.options.length > 1) sel.remove(1);
+                results.forEach(function (p) {
+                    const opt = document.createElement('option');
+                    opt.value = p.profile_id || '';
+                    opt.textContent = p.profile_id || '(unnamed)';
+                    sel.appendChild(opt);
+                });
+            } catch (e) {
+                console.warn('Search profiles not available:', e.message);
+            }
+        }
+
+        // Apply a search profile to all search params (dropdowns, sliders, school grades)
+        function applySearchProfile(profile) {
+            if (!profile) return;
+
+            const opportunityZoneFilter = document.getElementById('opportunityZoneFilter');
+            if (opportunityZoneFilter) opportunityZoneFilter.checked = !!profile.opportunity_zone_only;
+
+            const zipcodeFilter = document.getElementById('zipcodeFilter');
+            if (zipcodeFilter && profile.zipcodes && profile.zipcodes.length > 0) {
+                const zipcodes = profile.zipcodes.map(function (z) { return String(z); });
+                const existing = Array.from(zipcodeFilter.options).map(function (o) { return o.value; });
+                zipcodes.forEach(function (z) {
+                    if (existing.indexOf(z) === -1) {
+                        const opt = document.createElement('option');
+                        opt.value = z;
+                        opt.textContent = z;
+                        zipcodeFilter.appendChild(opt);
+                    }
+                });
+                zipcodeFilter.value = zipcodes[0];
+            }
+
+            const propertyTypeFilter = document.getElementById('propertyTypeFilter');
+            if (propertyTypeFilter && profile.property_types && profile.property_types.length > 0) {
+                propertyTypeFilter.value = profile.property_types[0] || '';
+            }
+
+            const priceMin = document.getElementById('priceMin');
+            const priceMax = document.getElementById('priceMax');
+            if (priceMin && priceMax && profile.price) {
+                if (profile.price.min != null) { priceMin.value = Math.max(parseFloat(priceMin.min) || 0, Math.min(parseFloat(priceMin.max) || 1e6, profile.price.min)); }
+                if (profile.price.max != null) { priceMax.value = Math.max(parseFloat(priceMax.min) || 0, Math.min(parseFloat(priceMax.max) || 1e6, profile.price.max)); }
+                if (typeof updatePriceDisplay === 'function') updatePriceDisplay();
+            }
+
+            const maintenanceMin = document.getElementById('maintenanceMin');
+            const maintenanceMax = document.getElementById('maintenanceMax');
+            if (maintenanceMin && maintenanceMax && profile.maintenance_fee) {
+                if (profile.maintenance_fee.min != null) { maintenanceMin.value = Math.max(parseFloat(maintenanceMin.min) || 0, Math.min(parseFloat(maintenanceMin.max) || 5000, profile.maintenance_fee.min)); }
+                if (profile.maintenance_fee.max != null) { maintenanceMax.value = Math.max(parseFloat(maintenanceMax.min) || 0, Math.min(parseFloat(maintenanceMax.max) || 5000, profile.maintenance_fee.max)); }
+                if (typeof updateMaintenanceDisplay === 'function') updateMaintenanceDisplay();
+            }
+
+            const elementaryMinGrade = document.getElementById('elementaryMinGrade');
+            const middleMinGrade = document.getElementById('middleMinGrade');
+            const highMinGrade = document.getElementById('highMinGrade');
+            const sg = profile.school_grade || {};
+            if (elementaryMinGrade && sg.elementary) elementaryMinGrade.value = sg.elementary;
+            if (middleMinGrade && sg.middle) middleMinGrade.value = sg.middle;
+            if (highMinGrade && sg.high) highMinGrade.value = sg.high;
+            if ((sg.elementary || sg.middle || sg.high) && !schoolFilterEnabled) {
+                toggleSchoolFilter();
+            }
+            if (elementaryMinGrade) elementaryMinGrade.disabled = !schoolFilterEnabled;
+            if (middleMinGrade) middleMinGrade.disabled = !schoolFilterEnabled;
+            if (highMinGrade) highMinGrade.disabled = !schoolFilterEnabled;
+
+            filterProperties();
+        }
+
         // Store actual max price from data for display
         let actualMaxPrice = 0;
         let actualMaxMaintenance = 0;
@@ -3121,6 +3214,12 @@
             updateLegend(); // Update legend to reflect new visualization mode
             updateMap(false); // Update map visualization without refitting bounds
         });
+        document.getElementById('searchProfileFilter').addEventListener('change', function () {
+            const val = this.value;
+            if (!val) return;
+            const profile = searchProfilesCache.find(function (p) { return p.profile_id === val; });
+            if (profile) applySearchProfile(profile);
+        });
         document.getElementById('areaFilter').addEventListener('change', filterProperties);
         document.getElementById('propertyTypeFilter').addEventListener('change', filterProperties);
         document.getElementById('includeOlderProperties').addEventListener('change', filterProperties);
@@ -3188,6 +3287,7 @@
         }
 
         // Load data on page load
+        loadSearchProfiles();
         loadData();
 
         // Set last refreshed date from consolidated data timestamp
