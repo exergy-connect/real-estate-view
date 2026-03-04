@@ -1,5 +1,7 @@
 import { Validator } from '@cfworker/json-schema';
-import { CacheStatus, updateCachedString } from '../../cache';
+import { stringify } from 'yaml';
+import { CacheStatus } from '../../cache';
+import { createGitHubPR } from '../../github_pr';
 import { loadCachedModel } from './get_model';
 import { loadCachedEntity } from './get_entity';
 
@@ -113,15 +115,16 @@ export async function handleCreateEntities(
 
   try {
     // Load model to get consolidated schema
-    const modelResult = await loadCachedModel(context.env, context.ctx, context.origin, true);
-    const modelSchema = modelResult.model;
+    const modelResult = await loadCachedModel(context.env, context.ctx, context.origin);
+    const modelSchemaStr = modelResult.model;
+    const modelSchema = typeof modelSchemaStr === 'string' ? JSON.parse(modelSchemaStr) : modelSchemaStr;
     const ioMs = performance.now() - ioStart;
 
     const cpuStart = performance.now();
 
     // Validate against the consolidated schema as-is
     // The schema already contains $defs, so $ref resolution should work automatically
-    const validator = new Validator(modelSchema, '2020-12', false);
+    const validator = new Validator(modelSchema);
 
     // Validate the entities structure against the consolidated schema
     const validationResult = validator.validate(entities);
@@ -222,15 +225,39 @@ export async function handleCreateEntities(
         created.push({ entity: entityType, primary_key: pkString });
       }
 
-      // Prepare for update
-      const params = entityResult.params;
+      // Create a GitHub PR with the entity changes
+      const branchName = `create-entities-${entityType}-${Date.now()}`;
+      const filePath = `docs/output/data/entities/${entityType}.yaml`;
+      const commitMessage = `Create/update ${entityType} entities`;
+      const prTitle = `Create/update ${entityType} entities`;
+      const prBody = `This PR adds/updates ${created.length} ${entityType} entity/entities.\n\nCreated entities:\n${created.map(c => `- ${c.primary_key}`).join('\n')}`;
 
-      // Write updated entity data back to L2 cache using updateCachedString
-      const timestamp = Date.now();
-      const etag = `"${timestamp}"`;
-      const jsonData = JSON.stringify(existingData);
-      
-      await updateCachedString(params, jsonData, etag, timestamp);
+      // Convert entity store to YAML format
+      const entityList = Object.values(existingData);
+      const yamlObject = { [entityType]: entityList };
+      const yamlContent = stringify(yamlObject, {
+        indent: 2,
+        lineWidth: 0,
+        minContentWidth: 0
+      });
+
+      // XXX could make this depend on x-storage flag, but really hard to keep consistent
+      const prResult = await createGitHubPR(context.env, {
+        branchName,
+        filePath,
+        fileContent: yamlContent,
+        commitMessage,
+        prTitle,
+        prBody
+      });
+
+      if (!prResult.success) {
+        errors.push({
+          entity: entityType,
+          primary_key: '',
+          message: `Failed to create PR: ${prResult.message || 'Unknown error'}`,
+        });
+      }
     }
 
     const cpuMs = performance.now() - cpuStart;

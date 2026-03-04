@@ -626,7 +626,7 @@ export async function loadCachedData(
     process?: (raw: string) => any;
     timestampHistoryCount?: number;
   }
-): Promise<{ data: any; ioMs: number; cacheStatus: CacheStatus; params: CacheParams }> {
+): Promise<{ data: any; ioMs: number; cacheStatus: CacheStatus }> {
   const urlString = typeof assetUrl === 'string' ? assetUrl : assetUrl.toString();
   const cacheKey = deriveCacheKeyFromUrl(urlString);
   
@@ -652,5 +652,5 @@ export async function loadCachedData(
   const result = await getCachedJSON(params);
   const ioMs = performance.now() - ioStart;
   
-  return { data: result.data, ioMs, cacheStatus: result.cacheStatus, params };
+  return { data: result.data, ioMs, cacheStatus: result.cacheStatus };
 }
