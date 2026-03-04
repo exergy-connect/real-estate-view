@@ -31,9 +31,7 @@
       "required": [
         "name",
         "state"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "crime_stats": {
       "type": "object",
@@ -59,9 +57,7 @@
       },
       "required": [
         "zipcode"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "demographic_stats": {
       "type": "object",
@@ -95,9 +91,7 @@
       },
       "required": [
         "zipcode"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "fault": {
       "type": "object",
@@ -137,9 +131,7 @@
         "id",
         "fault_system_name",
         "description"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "fault_system": {
       "type": "object",
@@ -170,9 +162,7 @@
       },
       "required": [
         "name"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "geographic_area": {
       "type": "object",
@@ -236,14 +226,7 @@
         "area_id",
         "area_type",
         "name"
-      ],
-      "x-created": 1,
-      "x-modified": [
-        2,
-        3,
-        4
-      ],
-      "x-version": 4
+      ]
     },
     "geographic_bounds": {
       "type": "object",
@@ -281,9 +264,7 @@
         "south_lat",
         "west_lng",
         "east_lng"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "property": {
       "type": "object",
@@ -375,9 +356,7 @@
       "required": [
         "mls_number",
         "zipcode"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "property_address": {
       "type": "object",
@@ -419,9 +398,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "property_detail": {
       "type": "object",
@@ -474,9 +451,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "property_economics": {
       "type": "object",
@@ -511,9 +486,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "property_geolocation": {
       "type": "object",
@@ -568,9 +541,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "property_media": {
       "type": "object",
@@ -595,9 +566,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "property_metadata": {
       "type": "object",
@@ -627,9 +596,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "property_schools": {
       "type": "object",
@@ -659,9 +626,7 @@
       },
       "required": [
         "mls_number"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "school": {
       "type": "object",
@@ -731,12 +696,7 @@
       },
       "required": [
         "school_id"
-      ],
-      "x-created": 1,
-      "x-modified": [
-        2
-      ],
-      "x-version": 1
+      ]
     },
     "search_profile": {
       "type": "object",
@@ -844,9 +804,7 @@
       },
       "required": [
         "profile_id"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "state": {
       "type": "object",
@@ -868,9 +826,7 @@
       },
       "required": [
         "name"
-      ],
-      "x-created": 1,
-      "x-version": 1
+      ]
     },
     "zipcode": {
       "type": "object",
@@ -903,9 +859,7 @@
       },
       "required": [
         "zipcode"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "zipcode_area": {
       "type": "object",
@@ -931,9 +885,7 @@
       },
       "required": [
         "zipcode"
-      ],
-      "x-created": 2,
-      "x-version": 1
+      ]
     },
     "change": {
       "type": "object",
