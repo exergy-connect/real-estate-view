@@ -263,10 +263,25 @@
         let crimeTypes = new Set();
         const MAX_MARKERS_FOR_TOOLTIPS = 100; // Show individual markers when <= 100 visible
 
+        // Parse lat, lng, zoom from URL (e.g. ?lat=29.76&lng=-95.37&zoom=14)
+        function getMapViewFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const lat = params.has('lat') ? parseFloat(params.get('lat')) : null;
+            const lng = params.has('lng') ? parseFloat(params.get('lng')) : null;
+            const zoom = params.has('zoom') ? parseInt(params.get('zoom'), 10) : null;
+            const defaultCenter = [29.7604, -95.3698];
+            const defaultZoom = 11;
+            if (lat != null && !Number.isNaN(lat) && lng != null && !Number.isNaN(lng)) {
+                const z = (zoom != null && !Number.isNaN(zoom) && zoom >= 1 && zoom <= 19) ? zoom : defaultZoom;
+                return { center: [lat, lng], zoom: z };
+            }
+            return { center: defaultCenter, zoom: defaultZoom };
+        }
+
         // Initialize map
         function initMap() {
-            // Center on Houston area
-            map = L.map('map').setView([29.7604, -95.3698], 11);
+            const view = getMapViewFromUrl();
+            map = L.map('map').setView(view.center, view.zoom);
             
             // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

@@ -908,6 +908,7 @@
                     const faultValueDisplay = document.getElementById('faultDistanceValue');
                     if (faultSlider) {
                         faultSlider.max = actualMaxFaultDistance;
+                        originalFaultMax = actualMaxFaultDistance;
                         if (faultValueDisplay) {
                             faultValueDisplay.textContent = '0';
                         }
@@ -2580,6 +2581,9 @@
 
                 actualMaxMaintenance = maxMaintenance;
 
+                // Store original range for zoom/restore behavior
+                sliderOriginalRanges.maintenance = { min: sliderMin, max: sliderMax };
+
                 document.getElementById('maintenanceMinValue').textContent = minMaintenance.toLocaleString();
                 document.getElementById('maintenanceMaxValue').textContent = maxMaintenance.toLocaleString();
                 
@@ -2591,6 +2595,7 @@
                 maintenanceMinSlider.max = 5000;
                 maintenanceMinSlider.value = 0;
                 maintenanceMinSlider.step = 50;
+                sliderOriginalRanges.maintenance = { min: 0, max: 5000 };
                 maintenanceMaxSlider.min = 0;
                 maintenanceMaxSlider.max = 5000;
                 maintenanceMaxSlider.value = 5000;
@@ -2643,6 +2648,9 @@
                 // Store actual max price for display purposes
                 actualMaxPrice = maxPrice;
 
+                // Store original range for zoom/restore behavior
+                sliderOriginalRanges.price = { min: sliderMin, max: sliderMax };
+
                 // Update display values - always show the actual maxPrice from data
                 document.getElementById('priceMinValue').textContent = minPrice.toLocaleString();
                 document.getElementById('priceMaxValue').textContent = maxPrice.toLocaleString();
@@ -2661,6 +2669,7 @@
                 priceMaxSlider.max = 1000000;
                 priceMaxSlider.value = 1000000;
                 priceMaxSlider.step = 1000;
+                sliderOriginalRanges.price = { min: 0, max: 1000000 };
                 updatePriceDisplay();
             }
         }
@@ -2785,6 +2794,82 @@
         let actualMaxPrice = 0;
         let actualMaxMaintenance = 0;
         let actualMaxFaultDistance = 0; // Maximum fault distance in meters
+
+        // Original slider ranges (from data at init) for zoom-in/restore behavior
+        let sliderOriginalRanges = { price: null, maintenance: null };
+        let originalFaultMax = 0;
+
+        /**
+         * Common handler for the MIN thumb of a dual range slider.
+         * When user moves the min thumb: zoom by setting range min to (value - step).
+         * When user moves the min thumb back to the current range min: restore original min.
+         */
+        function handleMinSliderInput(minEl, maxEl, originalRange, step, onUpdate) {
+            if (originalRange) {
+                const value = parseFloat(minEl.value);
+                const currentMin = parseFloat(minEl.min);
+                const stepNum = parseFloat(step) || 1;
+                if (value <= currentMin) {
+                    // User moved thumb back to the (zoomed) left edge → restore original range
+                    minEl.min = originalRange.min;
+                    maxEl.min = originalRange.min;
+                } else {
+                    // Zoom in: set range min to value - step; don't zoom past 1% of original range
+                    const minAllowedRange = 0.01 * (originalRange.max - originalRange.min);
+                    const currentMax = parseFloat(maxEl.max);
+                    const newMin = Math.max(originalRange.min, Math.min(currentMax - minAllowedRange, value - stepNum));
+                    minEl.min = newMin;
+                    maxEl.min = newMin;
+                }
+            }
+            if (typeof onUpdate === 'function') onUpdate();
+        }
+
+        /**
+         * Common handler for the MAX thumb of a dual range slider.
+         * When user moves the max thumb: zoom by setting range max to (value + step).
+         * When user moves the max thumb back to the current range max: restore original max.
+         */
+        function handleMaxSliderInput(minEl, maxEl, originalRange, step, onUpdate) {
+            if (originalRange) {
+                const value = parseFloat(maxEl.value);
+                const currentMax = parseFloat(maxEl.max);
+                const stepNum = parseFloat(step) || 1;
+                if (value >= currentMax) {
+                    // User moved thumb back to the (zoomed) right edge → restore original range
+                    minEl.max = originalRange.max;
+                    maxEl.max = originalRange.max;
+                } else {
+                    // Zoom in: set range max to value + step; don't zoom past 1% of original range
+                    const minAllowedRange = 0.01 * (originalRange.max - originalRange.min);
+                    const currentMin = parseFloat(minEl.min);
+                    const newMax = Math.min(originalRange.max, Math.max(currentMin + minAllowedRange, value + stepNum));
+                    minEl.max = newMax;
+                    maxEl.max = newMax;
+                }
+            }
+            if (typeof onUpdate === 'function') onUpdate();
+        }
+
+        /**
+         * Common handler for single-thumb slider (e.g. fault distance).
+         * Moving the thumb zooms by setting max to (value + step); moving back to current max restores original max.
+         */
+        function handleSingleSliderInput(el, originalMax, step, onUpdate) {
+            if (originalMax != null && originalMax > 0) {
+                const value = parseFloat(el.value);
+                const currentMax = parseFloat(el.max);
+                const stepNum = parseFloat(step) || 1;
+                if (value >= currentMax) {
+                    el.max = originalMax;
+                } else {
+                    // Don't zoom past 1% of original range (0 to originalMax)
+                    const minAllowedRange = 0.01 * originalMax;
+                    el.max = Math.min(originalMax, Math.max(minAllowedRange, value + stepNum));
+                }
+            }
+            if (typeof onUpdate === 'function') onUpdate();
+        }
 
         // Update price slider display values and fill
         function updatePriceDisplay() {
@@ -3231,6 +3316,7 @@
                             <div style="margin-top: 15px; display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center;">
                                 ${prop.url ? `<a href="${prop.url}" target="_blank" class="property-link" onclick="event.stopPropagation()">View on HAR.com</a>` : ''}
                                 ${prop.latitude && prop.longitude ? `<a href="https://msc.fema.gov/portal/firmette?latitude=${prop.latitude}&longitude=${prop.longitude}" target="_blank" class="property-link" style="background: #0066cc;" onclick="event.stopPropagation()">FEMA Flood Map</a>` : ''}
+                                ${prop.latitude && prop.longitude ? `<a href="./crime?lat=${prop.latitude}&lng=${prop.longitude}&zoom=14" target="_blank" class="property-link" style="background: #c0392b;" onclick="event.stopPropagation()">Crime</a>` : ''}
                             </div>
                         </div>
                     </div>
@@ -3268,57 +3354,56 @@
         
         const priceMinSlider = document.getElementById('priceMin');
         const priceMaxSlider = document.getElementById('priceMax');
-        
-        priceMinSlider.addEventListener('input', () => {
-            const min = parseInt(priceMinSlider.value);
-            const max = parseInt(priceMaxSlider.value);
-            if (min > max) {
-                priceMinSlider.value = max;
-            }
+        const priceStep = () => parseFloat(priceMinSlider.step) || 100;
+
+        const priceOnUpdate = () => {
+            let min = parseInt(priceMinSlider.value);
+            let max = parseInt(priceMaxSlider.value);
+            if (min > max) { priceMinSlider.value = max; }
+            if (max < min) { priceMaxSlider.value = min; }
             updatePriceDisplay();
             filterProperties();
+        };
+        priceMinSlider.addEventListener('input', priceOnUpdate);
+        priceMinSlider.addEventListener('change', () => {
+            handleMinSliderInput(priceMinSlider, priceMaxSlider, sliderOriginalRanges.price, priceStep(), priceOnUpdate);
         });
-        
-        priceMaxSlider.addEventListener('input', () => {
-            const min = parseInt(priceMinSlider.value);
-            const max = parseInt(priceMaxSlider.value);
-            if (max < min) {
-                priceMaxSlider.value = min;
-            }
-            updatePriceDisplay();
-            filterProperties();
-        });
-        
-        const maintenanceMinSlider = document.getElementById('maintenanceMin');
-        const maintenanceMaxSlider = document.getElementById('maintenanceMax');
-        
-        maintenanceMinSlider.addEventListener('input', () => {
-            const min = parseInt(maintenanceMinSlider.value);
-            const max = parseInt(maintenanceMaxSlider.value);
-            if (min > max) {
-                maintenanceMinSlider.value = max;
-            }
-            updateMaintenanceDisplay();
-            filterProperties();
-        });
-        
-        maintenanceMaxSlider.addEventListener('input', () => {
-            const min = parseInt(maintenanceMinSlider.value);
-            const max = parseInt(maintenanceMaxSlider.value);
-            if (max < min) {
-                maintenanceMaxSlider.value = min;
-            }
-            updateMaintenanceDisplay();
-            filterProperties();
+        priceMaxSlider.addEventListener('input', priceOnUpdate);
+        priceMaxSlider.addEventListener('change', () => {
+            handleMaxSliderInput(priceMinSlider, priceMaxSlider, sliderOriginalRanges.price, priceStep(), priceOnUpdate);
         });
 
-        // Fault distance slider
+        const maintenanceMinSlider = document.getElementById('maintenanceMin');
+        const maintenanceMaxSlider = document.getElementById('maintenanceMax');
+        const maintenanceStep = () => parseFloat(maintenanceMinSlider.step) || 50;
+
+        const maintenanceOnUpdate = () => {
+            let min = parseInt(maintenanceMinSlider.value);
+            let max = parseInt(maintenanceMaxSlider.value);
+            if (min > max) { maintenanceMinSlider.value = max; }
+            if (max < min) { maintenanceMaxSlider.value = min; }
+            updateMaintenanceDisplay();
+            filterProperties();
+        };
+        maintenanceMinSlider.addEventListener('input', maintenanceOnUpdate);
+        maintenanceMinSlider.addEventListener('change', () => {
+            handleMinSliderInput(maintenanceMinSlider, maintenanceMaxSlider, sliderOriginalRanges.maintenance, maintenanceStep(), maintenanceOnUpdate);
+        });
+        maintenanceMaxSlider.addEventListener('input', maintenanceOnUpdate);
+        maintenanceMaxSlider.addEventListener('change', () => {
+            handleMaxSliderInput(maintenanceMinSlider, maintenanceMaxSlider, sliderOriginalRanges.maintenance, maintenanceStep(), maintenanceOnUpdate);
+        });
+
+        // Fault distance slider (single-thumb zoom/restore)
         const faultDistanceSlider = document.getElementById('faultDistanceMin');
         if (faultDistanceSlider) {
-            faultDistanceSlider.addEventListener('input', () => {
-                const value = parseInt(faultDistanceSlider.value);
-                document.getElementById('faultDistanceValue').textContent = value.toLocaleString();
+            const faultOnUpdate = () => {
+                document.getElementById('faultDistanceValue').textContent = parseInt(faultDistanceSlider.value).toLocaleString();
                 filterProperties();
+            };
+            faultDistanceSlider.addEventListener('input', faultOnUpdate);
+            faultDistanceSlider.addEventListener('change', () => {
+                handleSingleSliderInput(faultDistanceSlider, originalFaultMax, faultDistanceSlider.step || 100, faultOnUpdate);
             });
         }
 
