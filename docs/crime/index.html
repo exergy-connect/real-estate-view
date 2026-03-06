@@ -130,6 +130,11 @@
             width: 100%;
         }
 
+        .selected-location-marker {
+            background: none !important;
+            border: none !important;
+        }
+
         .legend {
             position: absolute;
             bottom: 30px;
@@ -213,6 +218,11 @@
                 <input type="range" id="radiusSlider" min="5" max="50" step="5" value="25">
                 <span id="radiusValue">25</span>
             </div>
+            <div class="control-group" id="distanceFilterContainer" style="display: none;">
+                <label for="distanceSlider">Box size (miles)</label>
+                <input type="range" id="distanceSlider" min="0.25" max="5" step="0.25" value="1">
+                <span id="distanceValue">1</span>
+            </div>
         </div>
 
         <div class="stats">
@@ -262,6 +272,7 @@
         let filteredCrimeData = [];
         let crimeTypes = new Set();
         const MAX_MARKERS_FOR_TOOLTIPS = 100; // Show individual markers when <= 100 visible
+        let selectedLocation = null; // { lat, lng } when opened with ?lat=&lng=
 
         // Parse lat, lng, zoom from URL (e.g. ?lat=29.76&lng=-95.37&zoom=14)
         function getMapViewFromUrl() {
@@ -273,9 +284,9 @@
             const defaultZoom = 11;
             if (lat != null && !Number.isNaN(lat) && lng != null && !Number.isNaN(lng)) {
                 const z = (zoom != null && !Number.isNaN(zoom) && zoom >= 1 && zoom <= 19) ? zoom : defaultZoom;
-                return { center: [lat, lng], zoom: z };
+                return { center: [lat, lng], zoom: z, fromUrl: true };
             }
-            return { center: defaultCenter, zoom: defaultZoom };
+            return { center: defaultCenter, zoom: defaultZoom, fromUrl: false };
         }
 
         // Initialize map
@@ -292,8 +303,55 @@
             // Create marker layer group
             markerLayer = L.layerGroup().addTo(map);
             
+            // Add marker and distance filter when coordinates from URL
+            if (view.fromUrl) {
+                selectedLocation = { lat: view.center[0], lng: view.center[1] };
+                const distanceContainer = document.getElementById('distanceFilterContainer');
+                if (distanceContainer) {
+                    distanceContainer.style.display = 'flex';
+                    document.getElementById('distanceValue').textContent = document.getElementById('distanceSlider').value;
+                }
+                const selectedMarker = L.marker(view.center, {
+                    icon: L.divIcon({
+                        className: 'selected-location-marker',
+                        html: '<div style="width:24px;height:24px;background:#c0392b;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    })
+                }).addTo(map);
+                selectedMarker.bindTooltip('Selected location', { permanent: false, direction: 'top' });
+            }
+            
             // Listen for zoom and move events to update display mode
             map.on('zoomend moveend', updateDisplayMode);
+        }
+
+        // Bounding box (in degrees) for a square of side length boxMiles centered at (centerLat, centerLng).
+        // Approx: 1 degree lat ≈ 69 mi; 1 degree lng ≈ 69*cos(lat) mi.
+        function getBoundsForBoxMiles(centerLat, centerLng, boxMiles) {
+            const halfMiles = boxMiles / 2;
+            const milesPerDegLat = 69;
+            const milesPerDegLng = 69 * Math.cos(centerLat * Math.PI / 180);
+            return {
+                latMin: centerLat - halfMiles / milesPerDegLat,
+                latMax: centerLat + halfMiles / milesPerDegLat,
+                lngMin: centerLng - halfMiles / milesPerDegLng,
+                lngMax: centerLng + halfMiles / milesPerDegLng
+            };
+        }
+
+        // Apply crime type and bounding-box filters, then update display
+        function applyFilters() {
+            const selectedType = document.getElementById('crimeTypeFilter').value;
+            filteredCrimeData = selectedType === '' ? allCrimeData : allCrimeData.filter(c => c.type === selectedType);
+            if (selectedLocation) {
+                const boxMiles = parseFloat(document.getElementById('distanceSlider').value) || 1;
+                const b = getBoundsForBoxMiles(selectedLocation.lat, selectedLocation.lng, boxMiles);
+                filteredCrimeData = filteredCrimeData.filter(c =>
+                    c.lat >= b.latMin && c.lat <= b.latMax && c.lng >= b.lngMin && c.lng <= b.lngMax
+                );
+            }
+            updateDisplayMode();
         }
 
         // Load and process crime data
@@ -380,9 +438,9 @@
                     crimeTypeFilter.appendChild(option);
                 });
 
-                // Initial display
-                filteredCrimeData = allCrimeData;
-                // Wait a bit for map to be ready, then update display
+                // Initial display (apply crime type + distance filter if location set)
+                applyFilters();
+                // Wait a bit for map to be ready, then refresh display
                 setTimeout(() => {
                     updateDisplayMode();
                 }, 100);
@@ -504,14 +562,12 @@
         }
 
         // Filter by crime type
-        document.getElementById('crimeTypeFilter').addEventListener('change', function() {
-            const selectedType = this.value;
-            if (selectedType === '') {
-                filteredCrimeData = allCrimeData;
-            } else {
-                filteredCrimeData = allCrimeData.filter(crime => crime.type === selectedType);
-            }
-            updateDisplayMode();
+        document.getElementById('crimeTypeFilter').addEventListener('change', applyFilters);
+
+        // Distance filter (when lat/lng in URL)
+        document.getElementById('distanceSlider').addEventListener('input', function() {
+            document.getElementById('distanceValue').textContent = this.value;
+            applyFilters();
         });
 
         // Update intensity
