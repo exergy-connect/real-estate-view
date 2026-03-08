@@ -6,8 +6,10 @@
     <title>HAR Advanced Property Navigator</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.css" rel="stylesheet">
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -108,10 +110,6 @@
             background: white;
         }
 
-        .filter-group input[type="range"] {
-            padding: 0;
-        }
-
         .price-slider-container {
             display: flex;
             flex-direction: column;
@@ -120,99 +118,42 @@
 
         .price-slider-wrapper {
             position: relative;
-            height: 40px;
+            min-height: 40px;
             display: flex;
             align-items: center;
-            isolation: isolate;
         }
 
-        .price-slider {
-            position: absolute;
+        .nouislider-target {
             width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: transparent;
-            outline: none;
-            -webkit-appearance: none;
-            appearance: none;
-            pointer-events: none;
-            transform: translateZ(0);
         }
 
-        #priceMax {
-            z-index: 5;
+        .nouislider-target.noUi-target {
+            border-radius: 6px;
         }
 
-        #priceMin {
-            z-index: 4;
+        .nouislider-target.noUi-target .noUi-connect {
+            background: #1a5f3f;
+            border-radius: 6px;
         }
 
-        .price-slider::-webkit-slider-runnable-track {
-            height: 6px;
-            border-radius: 3px;
-        }
-
-        .price-slider::-moz-range-track {
-            height: 6px;
-            border-radius: 3px;
-            background: transparent;
-        }
-
-        .price-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
+        .nouislider-target.noUi-target .noUi-handle {
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
+            border: 2px solid #1a5f3f;
             background: #1a5f3f;
-            cursor: pointer;
-            border: 2px solid white;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            pointer-events: all;
-            position: relative;
-            z-index: 10;
-            transform: translateZ(0);
+            box-sizing: border-box;
+            top: 0;
         }
 
-        .price-slider::-moz-range-thumb {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #1a5f3f;
-            cursor: pointer;
-            border: 2px solid white;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            pointer-events: all;
-            position: relative;
-            z-index: 10;
-            transform: translateZ(0);
+        .nouislider-target.noUi-target .noUi-handle::before,
+        .nouislider-target.noUi-target .noUi-handle::after {
+            display: none;
         }
 
-        .price-slider::-webkit-slider-thumb:hover {
+        .nouislider-target.noUi-target .noUi-handle:hover {
             background: #0d4a2c;
-        }
-
-        .price-slider::-moz-range-thumb:hover {
-            background: #0d4a2c;
-        }
-
-        .price-slider-track {
-            position: absolute;
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: #dee2e6;
-            z-index: -1;
-            pointer-events: none;
-        }
-
-        .price-slider-fill {
-            position: absolute;
-            height: 6px;
-            border-radius: 3px;
-            background: #1a5f3f;
-            z-index: 1;
-            pointer-events: none;
+            border-color: #0d4a2c;
         }
 
         .price-range-display {
@@ -614,10 +555,7 @@
             <div class="filter-group price-slider-container">
                 <label>Price Range</label>
                 <div class="price-slider-wrapper">
-                    <div class="price-slider-track"></div>
-                    <div class="price-slider-fill" id="priceSliderFill"></div>
-                    <input type="range" id="priceMin" class="price-slider" min="0" max="1000000" step="1000" value="0">
-                    <input type="range" id="priceMax" class="price-slider" min="0" max="1000000" step="1000" value="1000000">
+                    <div id="priceSlider" class="nouislider-target"></div>
                 </div>
                 <div class="price-range-display">
                     <span>Min: $<span id="priceMinValue">0</span></span>
@@ -628,10 +566,7 @@
             <div class="filter-group price-slider-container">
                 <label>Monthly Maintenance Fee Range</label>
                 <div class="price-slider-wrapper">
-                    <div class="price-slider-track"></div>
-                    <div class="price-slider-fill" id="maintenanceSliderFill"></div>
-                    <input type="range" id="maintenanceMin" class="price-slider" min="0" max="5000" step="50" value="0">
-                    <input type="range" id="maintenanceMax" class="price-slider" min="0" max="5000" step="50" value="5000">
+                    <div id="maintenanceSlider" class="nouislider-target"></div>
                 </div>
                 <div class="price-range-display">
                     <span>Min: $<span id="maintenanceMinValue">0</span></span>
@@ -729,11 +664,10 @@
             </div>
             <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <div id="faultDistanceSliderContainer" style="display: none; min-width: 200px; max-width: 400px;">
-                    <label for="faultDistanceMin" style="display: block; margin-bottom: 5px; font-size: 0.9em; color: #495057;">
+                    <label style="display: block; margin-bottom: 5px; font-size: 0.9em; color: #495057;">
                         Min Distance to Fault: <span id="faultDistanceValue">0</span> m
                     </label>
-                    <input type="range" id="faultDistanceMin" min="0" step="100" value="0" 
-                           style="width: 100%; cursor: pointer;">
+                    <div id="faultDistanceSlider" class="nouislider-target"></div>
                 </div>
                 <div id="selectedCount" style="color: #495057; font-weight: 600;">
                     <span id="selectedCountText">0</span> properties selected
@@ -904,14 +838,14 @@
                     actualMaxFaultDistance = Math.ceil(actualMaxFaultDistance / 100) * 100;
                     
                     // Update fault distance slider max and initial display
-                    const faultSlider = document.getElementById('faultDistanceMin');
+                    const faultSliderEl = document.getElementById('faultDistanceSlider');
                     const faultValueDisplay = document.getElementById('faultDistanceValue');
-                    if (faultSlider) {
-                        faultSlider.max = actualMaxFaultDistance;
+                    if (faultSliderEl && faultSliderEl.noUiSlider) {
+                        faultSliderEl.noUiSlider.updateOptions({ range: { min: 0, max: actualMaxFaultDistance }, step: 100 }, false);
+                        faultSliderEl.noUiSlider.set(0);
+                        currentFaultMax = actualMaxFaultDistance;
                         originalFaultMax = actualMaxFaultDistance;
-                        if (faultValueDisplay) {
-                            faultValueDisplay.textContent = '0';
-                        }
+                        if (faultValueDisplay) faultValueDisplay.textContent = '0';
                     }
                 }
                 
@@ -2565,41 +2499,29 @@
                 const range = sliderMax - sliderMin;
                 const step = Math.max(10, Math.floor(range / 100));
 
-                const maintenanceMinSlider = document.getElementById('maintenanceMin');
-                const maintenanceMaxSlider = document.getElementById('maintenanceMax');
-
-                maintenanceMinSlider.min = sliderMin;
-                maintenanceMinSlider.max = sliderMax;
-                maintenanceMinSlider.value = minMaintenance;
-                maintenanceMinSlider.step = step;
-
-                // Set max slider to the actual max maintenance (not the padded sliderMax)
-                maintenanceMaxSlider.min = sliderMin;
-                maintenanceMaxSlider.max = sliderMax;
-                maintenanceMaxSlider.value = maxMaintenance;
-                maintenanceMaxSlider.step = step;
+                const maintenanceSliderEl = document.getElementById('maintenanceSlider');
+                if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider) {
+                    maintenanceSliderEl.noUiSlider.updateOptions({ range: { min: sliderMin, max: sliderMax }, step: step }, false);
+                    maintenanceSliderEl.noUiSlider.set([minMaintenance, maxMaintenance]);
+                    currentMaintenanceRange = { min: sliderMin, max: sliderMax };
+                    maintenanceStep = step;
+                }
 
                 actualMaxMaintenance = maxMaintenance;
 
-                // Store original range for zoom/restore behavior
                 sliderOriginalRanges.maintenance = { min: sliderMin, max: sliderMax };
 
                 document.getElementById('maintenanceMinValue').textContent = minMaintenance.toLocaleString();
                 document.getElementById('maintenanceMaxValue').textContent = maxMaintenance.toLocaleString();
-                
-                updateMaintenanceSliderFill();
             } else {
-                const maintenanceMinSlider = document.getElementById('maintenanceMin');
-                const maintenanceMaxSlider = document.getElementById('maintenanceMax');
-                maintenanceMinSlider.min = 0;
-                maintenanceMinSlider.max = 5000;
-                maintenanceMinSlider.value = 0;
-                maintenanceMinSlider.step = 50;
+                const maintenanceSliderEl = document.getElementById('maintenanceSlider');
+                if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider) {
+                    maintenanceSliderEl.noUiSlider.updateOptions({ range: { min: 0, max: 5000 }, step: 50 }, false);
+                    maintenanceSliderEl.noUiSlider.set([0, 5000]);
+                    currentMaintenanceRange = { min: 0, max: 5000 };
+                    maintenanceStep = 50;
+                }
                 sliderOriginalRanges.maintenance = { min: 0, max: 5000 };
-                maintenanceMaxSlider.min = 0;
-                maintenanceMaxSlider.max = 5000;
-                maintenanceMaxSlider.value = 5000;
-                maintenanceMaxSlider.step = 50;
                 updateMaintenanceDisplay();
             }
 
@@ -2629,46 +2551,29 @@
                 const range = sliderMax - sliderMin;
                 const step = Math.max(100, Math.floor(range / 1000));
 
-                const priceMinSlider = document.getElementById('priceMin');
-                const priceMaxSlider = document.getElementById('priceMax');
+                const priceSliderEl = document.getElementById('priceSlider');
+                if (priceSliderEl && priceSliderEl.noUiSlider) {
+                    priceSliderEl.noUiSlider.updateOptions({ range: { min: sliderMin, max: sliderMax }, step: step }, false);
+                    const maxValueSteps = Math.ceil(maxPrice / step);
+                    priceSliderEl.noUiSlider.set([minPrice, maxValueSteps * step]);
+                    currentPriceRange = { min: sliderMin, max: sliderMax };
+                    priceStep = step;
+                }
 
-                // Set slider attributes based on data
-                priceMinSlider.min = sliderMin;
-                priceMinSlider.max = sliderMax;
-                priceMinSlider.value = minPrice; // Start at actual min from data
-                priceMinSlider.step = step;
-
-                priceMaxSlider.min = sliderMin;
-                priceMaxSlider.max = sliderMax;
-                // Set slider to nearest step that's >= maxPrice to avoid rounding down
-                const maxValueSteps = Math.ceil(maxPrice / step);
-                priceMaxSlider.value = maxValueSteps * step;
-                priceMaxSlider.step = step;
-
-                // Store actual max price for display purposes
                 actualMaxPrice = maxPrice;
 
-                // Store original range for zoom/restore behavior
                 sliderOriginalRanges.price = { min: sliderMin, max: sliderMax };
 
-                // Update display values - always show the actual maxPrice from data
                 document.getElementById('priceMinValue').textContent = minPrice.toLocaleString();
                 document.getElementById('priceMaxValue').textContent = maxPrice.toLocaleString();
-                
-                // Update slider fill
-                updateSliderFill();
             } else {
-                // No valid prices found - set defaults
-                const priceMinSlider = document.getElementById('priceMin');
-                const priceMaxSlider = document.getElementById('priceMax');
-                priceMinSlider.min = 0;
-                priceMinSlider.max = 1000000;
-                priceMinSlider.value = 0;
-                priceMinSlider.step = 1000;
-                priceMaxSlider.min = 0;
-                priceMaxSlider.max = 1000000;
-                priceMaxSlider.value = 1000000;
-                priceMaxSlider.step = 1000;
+                const priceSliderEl = document.getElementById('priceSlider');
+                if (priceSliderEl && priceSliderEl.noUiSlider) {
+                    priceSliderEl.noUiSlider.updateOptions({ range: { min: 0, max: 1000000 }, step: 1000 }, false);
+                    priceSliderEl.noUiSlider.set([0, 1000000]);
+                    currentPriceRange = { min: 0, max: 1000000 };
+                    priceStep = 1000;
+                }
                 sliderOriginalRanges.price = { min: 0, max: 1000000 };
                 updatePriceDisplay();
             }
@@ -2726,19 +2631,21 @@
                 propertyTypeFilter.value = profile.property_types[0] || '';
             }
 
-            const priceMin = document.getElementById('priceMin');
-            const priceMax = document.getElementById('priceMax');
-            if (priceMin && priceMax && profile.price) {
-                if (profile.price.min != null) { priceMin.value = Math.max(parseFloat(priceMin.min) || 0, Math.min(parseFloat(priceMin.max) || 1e6, profile.price.min)); }
-                if (profile.price.max != null) { priceMax.value = Math.max(parseFloat(priceMax.min) || 0, Math.min(parseFloat(priceMax.max) || 1e6, profile.price.max)); }
+            const priceSliderEl = document.getElementById('priceSlider');
+            if (priceSliderEl && priceSliderEl.noUiSlider && profile.price) {
+                const r = currentPriceRange;
+                const pMin = profile.price.min != null ? Math.max(r.min, Math.min(r.max, profile.price.min)) : null;
+                const pMax = profile.price.max != null ? Math.max(r.min, Math.min(r.max, profile.price.max)) : null;
+                if (pMin != null && pMax != null) priceSliderEl.noUiSlider.set([pMin, pMax]);
                 if (typeof updatePriceDisplay === 'function') updatePriceDisplay();
             }
 
-            const maintenanceMin = document.getElementById('maintenanceMin');
-            const maintenanceMax = document.getElementById('maintenanceMax');
-            if (maintenanceMin && maintenanceMax && profile.maintenance_fee) {
-                if (profile.maintenance_fee.min != null) { maintenanceMin.value = Math.max(parseFloat(maintenanceMin.min) || 0, Math.min(parseFloat(maintenanceMin.max) || 5000, profile.maintenance_fee.min)); }
-                if (profile.maintenance_fee.max != null) { maintenanceMax.value = Math.max(parseFloat(maintenanceMax.min) || 0, Math.min(parseFloat(maintenanceMax.max) || 5000, profile.maintenance_fee.max)); }
+            const maintenanceSliderEl = document.getElementById('maintenanceSlider');
+            if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider && profile.maintenance_fee) {
+                const r = currentMaintenanceRange;
+                const mMin = profile.maintenance_fee.min != null ? Math.max(r.min, Math.min(r.max, profile.maintenance_fee.min)) : null;
+                const mMax = profile.maintenance_fee.max != null ? Math.max(r.min, Math.min(r.max, profile.maintenance_fee.max)) : null;
+                if (mMin != null && mMax != null) maintenanceSliderEl.noUiSlider.set([mMin, mMax]);
                 if (typeof updateMaintenanceDisplay === 'function') updateMaintenanceDisplay();
             }
 
@@ -2798,9 +2705,103 @@
         // Original slider ranges (from data at init) for zoom-in/restore behavior
         let sliderOriginalRanges = { price: null, maintenance: null };
         let originalFaultMax = 0;
+        // Current range (for noUiSlider zoom/restore); updated when range changes
+        let currentPriceRange = { min: 0, max: 1000000 };
+        let currentMaintenanceRange = { min: 0, max: 5000 };
+        let currentFaultMax = 0;
+        let priceStep = 1000;
+        let maintenanceStep = 50;
 
         /**
-         * Common handler for the MIN thumb of a dual range slider.
+         * noUiSlider range change: zoom/restore for handle 0 (min) or 1 (max).
+         */
+        function handleNoUiRangeChange(sliderEl, handle, originalRange, stepNum, currentRange, onUpdate) {
+            if (!originalRange || !sliderEl || !sliderEl.noUiSlider) return;
+            const values = sliderEl.noUiSlider.get(true);
+            const minVal = Number(values[0]);
+            const maxVal = Number(values[1]);
+            let newMin = currentRange.min;
+            let newMax = currentRange.max;
+            if (handle === 0) {
+                if (minVal <= currentRange.min) {
+                    newMin = originalRange.min;
+                    newMax = originalRange.max;
+                } else {
+                    const minAllowedRange = 0.01 * (originalRange.max - originalRange.min);
+                    newMin = Math.max(originalRange.min, Math.min(currentRange.max - minAllowedRange, minVal - stepNum));
+                }
+            } else {
+                if (maxVal >= currentRange.max) {
+                    newMin = originalRange.min;
+                    newMax = originalRange.max;
+                } else {
+                    const minAllowedRange = 0.01 * (originalRange.max - originalRange.min);
+                    newMax = Math.min(originalRange.max, Math.max(currentRange.min + minAllowedRange, maxVal + stepNum));
+                }
+            }
+            currentRange.min = newMin;
+            currentRange.max = newMax;
+            sliderEl.noUiSlider.updateOptions({ range: { min: newMin, max: newMax } }, false);
+            sliderEl.noUiSlider.set([minVal, maxVal]);
+            if (typeof onUpdate === 'function') onUpdate();
+        }
+
+        /**
+         * noUiSlider single-handle change (fault distance): zoom/restore.
+         */
+        function handleNoUiFaultChange(sliderEl, originalMax, stepNum, onUpdate) {
+            if (originalMax == null || originalMax <= 0 || !sliderEl || !sliderEl.noUiSlider) {
+                if (typeof onUpdate === 'function') onUpdate();
+                return;
+            }
+            const value = Number(sliderEl.noUiSlider.get(true));
+            const currentMax = currentFaultMax;
+            if (value >= currentMax) {
+                currentFaultMax = originalMax;
+                sliderEl.noUiSlider.updateOptions({ range: { min: 0, max: originalMax } }, false);
+            } else {
+                const minAllowedRange = 0.01 * originalMax;
+                currentFaultMax = Math.min(originalMax, Math.max(minAllowedRange, value + stepNum));
+                sliderEl.noUiSlider.updateOptions({ range: { min: 0, max: currentFaultMax } }, false);
+                sliderEl.noUiSlider.set(value);
+            }
+            if (typeof onUpdate === 'function') onUpdate();
+        }
+
+        /**
+         * Create noUiSlider instances (price range, maintenance range, fault distance).
+         */
+        function initSliders() {
+            const priceEl = document.getElementById('priceSlider');
+            const maintenanceEl = document.getElementById('maintenanceSlider');
+            const faultEl = document.getElementById('faultDistanceSlider');
+            if (!priceEl || !maintenanceEl) return;
+
+            noUiSlider.create(priceEl, {
+                start: [0, 1000000],
+                connect: true,
+                step: 1000,
+                range: { min: 0, max: 1000000 }
+            });
+            noUiSlider.create(maintenanceEl, {
+                start: [0, 5000],
+                connect: true,
+                step: 50,
+                range: { min: 0, max: 5000 }
+            });
+            if (faultEl) {
+                noUiSlider.create(faultEl, {
+                    start: 0,
+                    connect: [true, false],
+                    step: 100,
+                    range: { min: 0, max: 5000 }
+                });
+                currentFaultMax = 5000;
+            }
+        }
+
+        /**
+         * Legacy handler for the MIN thumb (used only for compatibility; noUiSlider uses handleNoUiRangeChange).
          * When user moves the min thumb: zoom by setting range min to (value - step).
          * When user moves the min thumb back to the current range min: restore original min.
          */
@@ -2871,115 +2872,75 @@
             if (typeof onUpdate === 'function') onUpdate();
         }
 
-        // Update price slider display values and fill
+        // Update price slider display values
         function updatePriceDisplay() {
-            const priceMinSlider = document.getElementById('priceMin');
-            const priceMaxSlider = document.getElementById('priceMax');
-            let priceMin = parseInt(priceMinSlider.value);
-            let priceMax = parseInt(priceMaxSlider.value);
-            
-            // Ensure min doesn't exceed max
+            const priceSliderEl = document.getElementById('priceSlider');
+            if (!priceSliderEl || !priceSliderEl.noUiSlider) return;
+            const values = priceSliderEl.noUiSlider.get(true);
+            let priceMin = Math.round(Number(values[0]));
+            let priceMax = Math.round(Number(values[1]));
             if (priceMin > priceMax) {
                 priceMin = priceMax;
-                priceMinSlider.value = priceMax;
+                priceSliderEl.noUiSlider.set([priceMax, priceMax]);
             }
             if (priceMax < priceMin) {
                 priceMax = priceMin;
-                priceMaxSlider.value = priceMin;
+                priceSliderEl.noUiSlider.set([priceMin, priceMin]);
             }
-            
-            // If max slider is at or near the maximum, show the actual max price from data
-            // This handles step rounding issues
             if (actualMaxPrice > 0 && priceMax >= actualMaxPrice * 0.99) {
                 priceMax = actualMaxPrice;
             }
-            
             document.getElementById('priceMinValue').textContent = priceMin.toLocaleString();
             document.getElementById('priceMaxValue').textContent = priceMax.toLocaleString();
-
-            // Update the fill between the two sliders
-            updateSliderFill();
         }
 
-        // Update maintenance fee slider display values and fill
+        // Update maintenance fee slider display values
         function updateMaintenanceDisplay() {
-            const maintenanceMinSlider = document.getElementById('maintenanceMin');
-            const maintenanceMaxSlider = document.getElementById('maintenanceMax');
-            let maintenanceMin = parseInt(maintenanceMinSlider.value);
-            let maintenanceMax = parseInt(maintenanceMaxSlider.value);
-            
-            // Ensure min doesn't exceed max
+            const maintenanceSliderEl = document.getElementById('maintenanceSlider');
+            if (!maintenanceSliderEl || !maintenanceSliderEl.noUiSlider) return;
+            const values = maintenanceSliderEl.noUiSlider.get(true);
+            let maintenanceMin = Math.round(Number(values[0]));
+            let maintenanceMax = Math.round(Number(values[1]));
             if (maintenanceMin > maintenanceMax) {
                 maintenanceMin = maintenanceMax;
-                maintenanceMinSlider.value = maintenanceMax;
+                maintenanceSliderEl.noUiSlider.set([maintenanceMax, maintenanceMax]);
             }
             if (maintenanceMax < maintenanceMin) {
                 maintenanceMax = maintenanceMin;
-                maintenanceMaxSlider.value = maintenanceMin;
+                maintenanceSliderEl.noUiSlider.set([maintenanceMin, maintenanceMin]);
             }
-            
-            // If max slider is at or near the maximum, show the actual max maintenance from data
             if (actualMaxMaintenance > 0 && maintenanceMax >= actualMaxMaintenance * 0.99) {
                 maintenanceMax = actualMaxMaintenance;
             }
-            
             document.getElementById('maintenanceMinValue').textContent = maintenanceMin.toLocaleString();
             document.getElementById('maintenanceMaxValue').textContent = maintenanceMax.toLocaleString();
-
-            // Update the fill between the two sliders
-            updateMaintenanceSliderFill();
         }
 
-        // Update the visual fill between min and max sliders
-        function updateSliderFill() {
-            const priceMinSlider = document.getElementById('priceMin');
-            const priceMaxSlider = document.getElementById('priceMax');
-            const fill = document.getElementById('priceSliderFill');
-            
-            const min = parseFloat(priceMinSlider.min);
-            const max = parseFloat(priceMinSlider.max);
-            const minValue = parseFloat(priceMinSlider.value);
-            const maxValue = parseFloat(priceMaxSlider.value);
-            
-            const minPercent = ((minValue - min) / (max - min)) * 100;
-            const maxPercent = ((maxValue - min) / (max - min)) * 100;
-            
-            fill.style.left = minPercent + '%';
-            fill.style.width = (maxPercent - minPercent) + '%';
-        }
-
-        // Update the visual fill between min and max maintenance sliders
-        function updateMaintenanceSliderFill() {
-            const maintenanceMinSlider = document.getElementById('maintenanceMin');
-            const maintenanceMaxSlider = document.getElementById('maintenanceMax');
-            const fill = document.getElementById('maintenanceSliderFill');
-            
-            const min = parseFloat(maintenanceMinSlider.min);
-            const max = parseFloat(maintenanceMinSlider.max);
-            const minValue = parseFloat(maintenanceMinSlider.value);
-            const maxValue = parseFloat(maintenanceMaxSlider.value);
-            
-            const minPercent = ((minValue - min) / (max - min)) * 100;
-            const maxPercent = ((maxValue - min) / (max - min)) * 100;
-            
-            fill.style.left = minPercent + '%';
-            fill.style.width = (maxPercent - minPercent) + '%';
-        }
+        function updateSliderFill() { /* noUiSlider draws connect */ }
+        function updateMaintenanceSliderFill() { /* noUiSlider draws connect */ }
 
         // Filter properties
         function filterProperties() {
             const areaFilter = document.getElementById('areaFilter').value;
             const propertyTypeFilter = document.getElementById('propertyTypeFilter').value;
             const zipcodeFilter = document.getElementById('zipcodeFilter').value;
-            const priceMin = parseInt(document.getElementById('priceMin').value) || 0;
-            const priceMaxValue = document.getElementById('priceMax').value;
-            const priceMax = priceMaxValue ? parseInt(priceMaxValue) : Infinity;
-            const maintenanceMin = parseInt(document.getElementById('maintenanceMin').value) || 0;
-            const maintenanceMaxValue = document.getElementById('maintenanceMax').value;
-            const maintenanceMax = maintenanceMaxValue ? parseInt(maintenanceMaxValue) : Infinity;
-
-            // Get fault distance filter
-            const faultDistanceMin = parseInt(document.getElementById('faultDistanceMin').value) || 0;
+            let priceMin = 0, priceMax = Infinity, maintenanceMin = 0, maintenanceMax = Infinity, faultDistanceMin = 0;
+            const priceSliderEl = document.getElementById('priceSlider');
+            if (priceSliderEl && priceSliderEl.noUiSlider) {
+                const p = priceSliderEl.noUiSlider.get(true);
+                priceMin = parseInt(p[0], 10) || 0;
+                priceMax = p[1] != null ? parseInt(p[1], 10) : Infinity;
+            }
+            const maintenanceSliderEl = document.getElementById('maintenanceSlider');
+            if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider) {
+                const m = maintenanceSliderEl.noUiSlider.get(true);
+                maintenanceMin = parseInt(m[0], 10) || 0;
+                maintenanceMax = m[1] != null ? parseInt(m[1], 10) : Infinity;
+            }
+            const faultSliderEl = document.getElementById('faultDistanceSlider');
+            if (faultSliderEl && faultSliderEl.noUiSlider) {
+                faultDistanceMin = parseInt(faultSliderEl.noUiSlider.get(true), 10) || 0;
+            }
             
             // Get include older properties checkbox
             const includeOlderProperties = document.getElementById('includeOlderProperties').checked;
@@ -3352,58 +3313,46 @@
             displayProperties();
         });
         
-        const priceMinSlider = document.getElementById('priceMin');
-        const priceMaxSlider = document.getElementById('priceMax');
-        const priceStep = () => parseFloat(priceMinSlider.step) || 100;
-
         const priceOnUpdate = () => {
-            let min = parseInt(priceMinSlider.value);
-            let max = parseInt(priceMaxSlider.value);
-            if (min > max) { priceMinSlider.value = max; }
-            if (max < min) { priceMaxSlider.value = min; }
             updatePriceDisplay();
             filterProperties();
         };
-        priceMinSlider.addEventListener('input', priceOnUpdate);
-        priceMinSlider.addEventListener('change', () => {
-            handleMinSliderInput(priceMinSlider, priceMaxSlider, sliderOriginalRanges.price, priceStep(), priceOnUpdate);
-        });
-        priceMaxSlider.addEventListener('input', priceOnUpdate);
-        priceMaxSlider.addEventListener('change', () => {
-            handleMaxSliderInput(priceMinSlider, priceMaxSlider, sliderOriginalRanges.price, priceStep(), priceOnUpdate);
-        });
-
-        const maintenanceMinSlider = document.getElementById('maintenanceMin');
-        const maintenanceMaxSlider = document.getElementById('maintenanceMax');
-        const maintenanceStep = () => parseFloat(maintenanceMinSlider.step) || 50;
-
         const maintenanceOnUpdate = () => {
-            let min = parseInt(maintenanceMinSlider.value);
-            let max = parseInt(maintenanceMaxSlider.value);
-            if (min > max) { maintenanceMinSlider.value = max; }
-            if (max < min) { maintenanceMaxSlider.value = min; }
             updateMaintenanceDisplay();
             filterProperties();
         };
-        maintenanceMinSlider.addEventListener('input', maintenanceOnUpdate);
-        maintenanceMinSlider.addEventListener('change', () => {
-            handleMinSliderInput(maintenanceMinSlider, maintenanceMaxSlider, sliderOriginalRanges.maintenance, maintenanceStep(), maintenanceOnUpdate);
-        });
-        maintenanceMaxSlider.addEventListener('input', maintenanceOnUpdate);
-        maintenanceMaxSlider.addEventListener('change', () => {
-            handleMaxSliderInput(maintenanceMinSlider, maintenanceMaxSlider, sliderOriginalRanges.maintenance, maintenanceStep(), maintenanceOnUpdate);
-        });
+        const faultOnUpdate = () => {
+            const faultSliderEl = document.getElementById('faultDistanceSlider');
+            const el = document.getElementById('faultDistanceValue');
+            if (faultSliderEl && faultSliderEl.noUiSlider && el) {
+                el.textContent = Math.round(Number(faultSliderEl.noUiSlider.get(true))).toLocaleString();
+            }
+            filterProperties();
+        };
 
-        // Fault distance slider (single-thumb zoom/restore)
-        const faultDistanceSlider = document.getElementById('faultDistanceMin');
-        if (faultDistanceSlider) {
-            const faultOnUpdate = () => {
-                document.getElementById('faultDistanceValue').textContent = parseInt(faultDistanceSlider.value).toLocaleString();
-                filterProperties();
-            };
-            faultDistanceSlider.addEventListener('input', faultOnUpdate);
-            faultDistanceSlider.addEventListener('change', () => {
-                handleSingleSliderInput(faultDistanceSlider, originalFaultMax, faultDistanceSlider.step || 100, faultOnUpdate);
+        initSliders();
+
+        const priceSliderEl = document.getElementById('priceSlider');
+        if (priceSliderEl && priceSliderEl.noUiSlider) {
+            priceSliderEl.noUiSlider.on('update', priceOnUpdate);
+            priceSliderEl.noUiSlider.on('change', function(values, handle) {
+                handleNoUiRangeChange(priceSliderEl, handle, sliderOriginalRanges.price, priceStep, currentPriceRange, priceOnUpdate);
+            });
+        }
+
+        const maintenanceSliderEl = document.getElementById('maintenanceSlider');
+        if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider) {
+            maintenanceSliderEl.noUiSlider.on('update', maintenanceOnUpdate);
+            maintenanceSliderEl.noUiSlider.on('change', function(values, handle) {
+                handleNoUiRangeChange(maintenanceSliderEl, handle, sliderOriginalRanges.maintenance, maintenanceStep, currentMaintenanceRange, maintenanceOnUpdate);
+            });
+        }
+
+        const faultSliderEl = document.getElementById('faultDistanceSlider');
+        if (faultSliderEl && faultSliderEl.noUiSlider) {
+            faultSliderEl.noUiSlider.on('update', faultOnUpdate);
+            faultSliderEl.noUiSlider.on('change', function() {
+                handleNoUiFaultChange(faultSliderEl, originalFaultMax, 100, faultOnUpdate);
             });
         }
 
