@@ -853,6 +853,7 @@
                 calculateValueRanges();
                 
             populateFilters();
+            applyUrlParams();
             filterProperties();
             initMap();
             updateSelection(); // Initialize selection count display
@@ -2664,6 +2665,37 @@
             if (highMinGrade) highMinGrade.disabled = !schoolFilterEnabled;
 
             filterProperties();
+        }
+
+        // Apply optional URL parameters: zipcode (preselect zip), mls_number (select property and include older)
+        function applyUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            const zipcodeParam = params.get('zipcode');
+            const mlsParam = params.get('mls_number');
+
+            if (zipcodeParam != null && zipcodeParam !== '') {
+                const zipcodeFilter = document.getElementById('zipcodeFilter');
+                if (zipcodeFilter) {
+                    const z = String(zipcodeParam).trim();
+                    const existing = Array.from(zipcodeFilter.options).map(o => o.value);
+                    if (existing.indexOf(z) === -1) {
+                        const opt = document.createElement('option');
+                        opt.value = z;
+                        opt.textContent = z;
+                        zipcodeFilter.appendChild(opt);
+                    }
+                    zipcodeFilter.value = z;
+                }
+            }
+
+            if (mlsParam != null && mlsParam !== '') {
+                const mlsNum = parseInt(mlsParam, 10);
+                if (!isNaN(mlsNum)) {
+                    const includeOlderEl = document.getElementById('includeOlderProperties');
+                    if (includeOlderEl) includeOlderEl.checked = true;
+                    selectedProperties.add(mlsNum);
+                }
+            }
         }
 
         // Reset all search filters to default (used when Search profile is set to None)
