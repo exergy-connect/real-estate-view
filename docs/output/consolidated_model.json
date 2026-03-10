@@ -24,14 +24,24 @@
           "type": "array",
           "description": "ZIP codes within this city",
           "items": {
-            "$ref": "#/$defs/zipcode"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/zipcode"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         }
       },
       "required": [
         "name",
         "state"
-      ]
+      ],
+      "x-primaryKey": "name",
+      "x-created": 2,
+      "x-version": 2
     },
     "crime_stats": {
       "type": "object",
@@ -57,7 +67,10 @@
       },
       "required": [
         "zipcode"
-      ]
+      ],
+      "x-primaryKey": "zipcode",
+      "x-created": 2,
+      "x-version": 2
     },
     "demographic_stats": {
       "type": "object",
@@ -91,7 +104,10 @@
       },
       "required": [
         "zipcode"
-      ]
+      ],
+      "x-primaryKey": "zipcode",
+      "x-created": 2,
+      "x-version": 2
     },
     "fault": {
       "type": "object",
@@ -131,7 +147,10 @@
         "id",
         "fault_system_name",
         "description"
-      ]
+      ],
+      "x-primaryKey": "id",
+      "x-created": 2,
+      "x-version": 2
     },
     "fault_system": {
       "type": "object",
@@ -156,13 +175,23 @@
           "type": "array",
           "description": "Array of key points along the fault",
           "items": {
-            "$ref": "#/$defs/fault"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/fault"
+              },
+              {
+                "type": "string"
+              }
+            ]
           }
         }
       },
       "required": [
         "name"
-      ]
+      ],
+      "x-primaryKey": "name",
+      "x-created": 2,
+      "x-version": 2
     },
     "geographic_area": {
       "type": "object",
@@ -211,14 +240,28 @@
           "type": "array",
           "description": "Geographic bounds for this area (typically one bounds object per area)",
           "items": {
-            "$ref": "#/$defs/geographic_bounds"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/geographic_bounds"
+              },
+              {
+                "type": "string"
+              }
+            ]
           }
         },
         "schools": {
           "type": "array",
           "description": "Schools associated with this geographic area (school districts/school zones)",
           "items": {
-            "$ref": "#/$defs/school"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/school"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         }
       },
@@ -226,7 +269,10 @@
         "area_id",
         "area_type",
         "name"
-      ]
+      ],
+      "x-primaryKey": "area_id",
+      "x-created": 2,
+      "x-version": 2
     },
     "geographic_bounds": {
       "type": "object",
@@ -264,7 +310,10 @@
         "south_lat",
         "west_lng",
         "east_lng"
-      ]
+      ],
+      "x-primaryKey": "area_id",
+      "x-created": 2,
+      "x-version": 2
     },
     "property": {
       "type": "object",
@@ -307,56 +356,108 @@
           "type": "array",
           "description": "Street address details for this property",
           "items": {
-            "$ref": "#/$defs/property_address"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_address"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "detail": {
           "type": "array",
           "description": "Physical characteristics and details for this property",
           "items": {
-            "$ref": "#/$defs/property_detail"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_detail"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "geolocation": {
           "type": "array",
           "description": "Geolocation data including coordinates, elevation, flood zone, and fault proximity",
           "items": {
-            "$ref": "#/$defs/property_geolocation"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_geolocation"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "media": {
           "type": "array",
           "description": "Images and media associated with this property",
           "items": {
-            "$ref": "#/$defs/property_media"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_media"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "metadata": {
           "type": "array",
           "description": "Extraction and tracking metadata for this property",
           "items": {
-            "$ref": "#/$defs/property_metadata"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_metadata"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "economics": {
           "type": "array",
           "description": "Economic information for this property including pricing and maintenance fees",
           "items": {
-            "$ref": "#/$defs/property_economics"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_economics"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "property_schools": {
           "type": "array",
           "description": "School associations for this property, with separate links to elementary, middle, and high schools by school_id",
           "items": {
-            "$ref": "#/$defs/property_schools"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property_schools"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         }
       },
       "required": [
         "mls_number",
         "zipcode"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_address": {
       "type": "object",
@@ -398,7 +499,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_detail": {
       "type": "object",
@@ -438,7 +542,8 @@
         },
         "sqft": {
           "type": "integer",
-          "description": "Square footage of the property"
+          "description": "Square footage of the property",
+          "minimum": 10
         },
         "lot_size_sqft": {
           "type": "integer",
@@ -451,7 +556,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_economics": {
       "type": "object",
@@ -473,7 +581,19 @@
         "price_per_sqft": {
           "type": "number",
           "description": "Price per square foot (calculated as price / sqft from property_detail)",
-          "readOnly": true
+          "readOnly": true,
+          "x-computed": {
+            "operation": "division",
+            "fields": [
+              {
+                "field": "price"
+              },
+              {
+                "field": "sqft",
+                "entity": "property_detail"
+              }
+            ]
+          }
         },
         "opportunity_zone": {
           "type": "string",
@@ -486,7 +606,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_geolocation": {
       "type": "object",
@@ -541,7 +664,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_media": {
       "type": "object",
@@ -566,7 +692,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_metadata": {
       "type": "object",
@@ -596,7 +725,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "property_schools": {
       "type": "object",
@@ -626,7 +758,10 @@
       },
       "required": [
         "mls_number"
-      ]
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 2,
+      "x-version": 2
     },
     "school": {
       "type": "object",
@@ -696,7 +831,10 @@
       },
       "required": [
         "school_id"
-      ]
+      ],
+      "x-primaryKey": "school_id",
+      "x-created": 2,
+      "x-version": 2
     },
     "search_profile": {
       "type": "object",
@@ -804,7 +942,19 @@
       },
       "required": [
         "profile_id"
-      ]
+      ],
+      "x-primaryKey": "profile_id",
+      "x-created": 2,
+      "x-version": 2,
+      "x-storage": {
+        "type": "string",
+        "enum": [
+          "INDEXED_KV",
+          "GITHUB_PR"
+        ],
+        "description": "Storage type for entity data. INDEXED_KV uses CloudFlare Key-Value store with an index key (entityname:index) containing the primary key values of value keys (entityname:primary_key_1, ...). GITHUB_PR uses GitHub pull request storage.",
+        "default": "INDEXED_KV"
+      }
     },
     "state": {
       "type": "object",
@@ -820,13 +970,23 @@
           "type": "array",
           "description": "Cities within this state",
           "items": {
-            "$ref": "#/$defs/city"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/city"
+              },
+              {
+                "type": "string"
+              }
+            ]
           }
         }
       },
       "required": [
         "name"
-      ]
+      ],
+      "x-primaryKey": "name",
+      "x-created": 2,
+      "x-version": 2
     },
     "zipcode": {
       "type": "object",
@@ -853,13 +1013,23 @@
           "type": "array",
           "description": "Properties located in this ZIP code",
           "items": {
-            "$ref": "#/$defs/property"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/property"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         }
       },
       "required": [
         "zipcode"
-      ]
+      ],
+      "x-primaryKey": "zipcode",
+      "x-created": 2,
+      "x-version": 2
     },
     "zipcode_area": {
       "type": "object",
@@ -872,20 +1042,37 @@
           "type": "array",
           "description": "Crime statistics for this ZIP code area (one record per ZIP code)",
           "items": {
-            "$ref": "#/$defs/crime_stats"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/crime_stats"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         },
         "demographics": {
           "type": "array",
           "description": "Demographic statistics for this ZIP code area",
           "items": {
-            "$ref": "#/$defs/demographic_stats"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/demographic_stats"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         }
       },
       "required": [
         "zipcode"
-      ]
+      ],
+      "x-primaryKey": "zipcode",
+      "x-created": 2,
+      "x-version": 2
     },
     "change": {
       "type": "object",
@@ -1055,6 +1242,12 @@
       "timestamp": "2026-03-02T23:26:07.371643",
       "author": "jeroen",
       "note": "Regenerate consolidated model with x-parents support"
+    },
+    {
+      "id": 2,
+      "timestamp": "2026-03-10T18:50:43.721011",
+      "author": "jeroen",
+      "note": "Consolidate har_model"
     }
   ]
 }
