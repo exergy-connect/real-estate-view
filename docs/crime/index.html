@@ -440,6 +440,7 @@
                 // Prefer loading JSON via fetch (works when page is served over HTTP; avoids
                 // iOS Safari "The index is not in the allowed range" with giant data URLs)
                 let data;
+                let loadStep = 'fetch';
                 try {
                     const resp = await fetch('output/consolidated_data.json');
                     if (resp.ok) {
@@ -448,15 +449,18 @@
                         throw new Error(resp.status + ' ' + resp.statusText);
                     }
                 } catch (fetchErr) {
-                    // Fall back to embedded data: async path uses fetch(data:base64,...) which can fail on iOS with "index not in allowed range".
+                    loadStep = 'async embedded';
                     try {
+                        if (typeof getConsolidatedData !== 'function') {
+                            throw new Error('getConsolidatedData is not defined. Is output/consolidated_data.js loaded?');
+                        }
                         data = await getConsolidatedData();
                     } catch (asyncErr) {
-                        // Pako path: atob + Uint8Array.from + pako.inflate on in-page string (no fetch), works on iOS
+                        loadStep = 'sync embedded';
                         if (typeof getConsolidatedDataSync === 'function' && typeof pako !== 'undefined') {
                             data = getConsolidatedDataSync();
                         } else {
-                            throw asyncErr;
+                            throw new Error('pako or output/consolidated_data.js not loaded');
                         }
                     }
                 }
@@ -549,7 +553,8 @@
                 
             } catch (error) {
                 console.error('Error loading crime data:', error);
-                let msg = 'Error loading data: ' + (error?.message || String(error));
+                const step = typeof loadStep !== 'undefined' ? ` [${loadStep}]` : '';
+                let msg = 'Error loading data' + step + ': ' + (error?.message || String(error));
                 if (/index|range/i.test(msg)) {
                     msg += '. On iPhone/Safari, open this page from a server (e.g. the deployed site or a local server) so data loads from the JSON file instead.';
                 }
