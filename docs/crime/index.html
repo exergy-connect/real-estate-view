@@ -326,7 +326,10 @@
         </div>
     </div>
 
-    <!-- Load consolidated data -->
+    <!-- Pako: used as fallback on iOS where fetch(data:base64,...) can throw "index not in allowed range".
+         Pako path uses atob() + Uint8Array.from() + pako.inflate() on the in-page base64 string (no fetch, no data URL). -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"></script>
+    <!-- Load consolidated data (provides getConsolidatedData and getConsolidatedDataSync) -->
     <script src="output/consolidated_data.js"></script>
     
     <script>
@@ -424,8 +427,29 @@
             const loadingIndicator = document.getElementById('loadingIndicator');
             
             try {
-                // Use the async function from consolidated_data.js
-                const data = await getConsolidatedData();
+                // Prefer loading JSON via fetch (works when page is served over HTTP; avoids
+                // iOS Safari "The index is not in the allowed range" with giant data URLs)
+                let data;
+                try {
+                    const resp = await fetch('output/consolidated_data.json');
+                    if (resp.ok) {
+                        data = await resp.json();
+                    } else {
+                        throw new Error(resp.status + ' ' + resp.statusText);
+                    }
+                } catch (fetchErr) {
+                    // Fall back to embedded data: async path uses fetch(data:base64,...) which can fail on iOS with "index not in allowed range".
+                    try {
+                        data = await getConsolidatedData();
+                    } catch (asyncErr) {
+                        // Pako path: atob + Uint8Array.from + pako.inflate on in-page string (no fetch), works on iOS
+                        if (typeof getConsolidatedDataSync === 'function' && typeof pako !== 'undefined') {
+                            data = getConsolidatedDataSync();
+                        } else {
+                            throw asyncErr;
+                        }
+                    }
+                }
                 
                 // Extract data - crime_incident may be nested under crime_zipcode
                 const crimeIncidents = data.data?.crime_incident || {};
@@ -515,7 +539,11 @@
                 
             } catch (error) {
                 console.error('Error loading crime data:', error);
-                loadingIndicator.textContent = 'Error loading data: ' + error.message;
+                let msg = 'Error loading data: ' + (error?.message || String(error));
+                if (/index|range/i.test(msg)) {
+                    msg += '. On iPhone/Safari, open this page from a server (e.g. the deployed site or a local server) so data loads from the JSON file instead.';
+                }
+                loadingIndicator.textContent = msg;
             }
         }
 
