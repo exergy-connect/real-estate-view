@@ -192,6 +192,19 @@
             color: #c0392b;
         }
 
+        .show-all-btn {
+            padding: 8px 14px;
+            background: #c0392b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+        .show-all-btn:hover { background: #a93226; }
+        .show-all-btn:active { background: #922b21; }
+
         .map-container {
             position: relative;
             flex: 1;
@@ -313,6 +326,9 @@
                 <span class="stat-label">With Coordinates</span>
                 <span class="stat-value" id="withCoordinates">0</span>
             </div>
+            <div class="stat-item" id="showAllHeatContainer" style="display: none;">
+                <button type="button" id="showAllHeatBtn" class="show-all-btn">Show all</button>
+            </div>
         </div>
 
         <div class="map-container">
@@ -351,7 +367,10 @@
         let crimeTypes = new Set();
         const MAX_MARKERS_FOR_TOOLTIPS = 100; // Show individual markers when <= 100 visible
         const MAX_MARKERS_WHEN_HEAT_UNAVAILABLE = 2000; // Fallback cap when heat layer fails (e.g. iOS)
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const IOS_HEAT_LIMIT = 1000; // Limit heat points on iOS at start to avoid DOMException
         let heatLayerUnavailable = false;
+        let showAllHeatOnIOS = false; // When true, use all points on iOS (or already fell back to markers)
         let selectedLocation = null; // { lat, lng } when opened with ?lat=&lng=
 
         // Parse lat, lng, zoom from URL (e.g. ?lat=29.76&lng=-95.37&zoom=14)
@@ -659,15 +678,22 @@
 
             if (heatPoints.length === 0) {
                 document.getElementById('displayedIncidents').textContent = '0';
+                updateShowAllButton(false, 0, 0);
                 return;
             }
+
+            // On iOS, limit points at start to avoid DOMException; user can click "Show all"
+            const usePoints = (isIOS && !showAllHeatOnIOS && heatPoints.length > IOS_HEAT_LIMIT)
+                ? heatPoints.slice(0, IOS_HEAT_LIMIT)
+                : heatPoints;
+            const isLimited = usePoints.length < heatPoints.length;
 
             // Get intensity and radius from sliders
             const intensity = parseFloat(document.getElementById('intensitySlider').value);
             const radius = parseInt(document.getElementById('radiusSlider').value);
 
             try {
-                heatLayer = L.heatLayer(heatPoints, {
+                heatLayer = L.heatLayer(usePoints, {
                     radius: radius,
                     blur: radius * 0.8,
                     maxZoom: 17,
@@ -683,10 +709,12 @@
                 }).addTo(map);
             } catch (heatErr) {
                 heatLayerUnavailable = true;
+                showAllHeatOnIOS = true; // so we don't retry heat on next update
                 if (heatLayer) {
                     try { map.removeLayer(heatLayer); } catch (_) {}
                     heatLayer = null;
                 }
+                updateShowAllButton(false, 0, 0);
                 (function (err) {
                     var script = document.createElement('script');
                     script.src = 'https://cdn.jsdelivr.net/npm/eruda';
@@ -700,9 +728,37 @@
                 return;
             }
 
-            // Update displayed count (total filtered, not just visible)
-            document.getElementById('displayedIncidents').textContent = filteredCrimeData.length.toLocaleString();
+            // Update displayed count; on iOS limited show "1,000 of N"
+            if (isLimited) {
+                document.getElementById('displayedIncidents').textContent = usePoints.length.toLocaleString() + ' of ' + heatPoints.length.toLocaleString();
+            } else {
+                document.getElementById('displayedIncidents').textContent = filteredCrimeData.length.toLocaleString();
+            }
+            updateShowAllButton(isLimited, usePoints.length, heatPoints.length);
         }
+
+        function updateShowAllButton(show, showing, total) {
+            const container = document.getElementById('showAllHeatContainer');
+            const btn = document.getElementById('showAllHeatBtn');
+            if (!container || !btn) return;
+            if (show && isIOS && total > IOS_HEAT_LIMIT) {
+                container.style.display = 'flex';
+                btn.textContent = 'Show all ' + total.toLocaleString() + ' incidents';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        // Show all heat points on iOS (may fall back to markers if heat throws)
+        document.getElementById('showAllHeatBtn').addEventListener('click', function() {
+            showAllHeatOnIOS = true;
+            const visibleCrimes = getVisibleCrimes();
+            if (heatLayerUnavailable || (visibleCrimes.length > 0 && visibleCrimes.length <= MAX_MARKERS_FOR_TOOLTIPS)) {
+                updateDisplayMode();
+            } else {
+                updateHeatMap();
+            }
+        });
 
         // Filter by crime type
         document.getElementById('crimeTypeFilter').addEventListener('change', applyFilters);
