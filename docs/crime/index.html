@@ -552,19 +552,21 @@
                 document.getElementById('legend').style.display = 'block';
                 
             } catch (error) {
-                console.error('Error loading crime data:', error);
                 const step = typeof loadStep !== 'undefined' ? ` [${loadStep}]` : '';
                 let msg = 'Error loading data' + step + ': ' + (error?.message || String(error));
                 if (/index|range/i.test(msg)) {
                     msg += '. On iPhone/Safari, open this page from a server (e.g. the deployed site or a local server) so data loads from the JSON file instead.';
                 }
                 loadingIndicator.textContent = msg;
-                (function () {
+                (function (err) {
                     var script = document.createElement('script');
                     script.src = 'https://cdn.jsdelivr.net/npm/eruda';
                     document.body.appendChild(script);
-                    script.onload = function () { eruda.init(); };
-                })();
+                    script.onload = function () {
+                        eruda.init();
+                        console.error('Error loading crime data:', err);
+                    };
+                })(error);
             }
         }
 
