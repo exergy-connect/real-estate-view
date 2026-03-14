@@ -1,5 +1,9 @@
 View at https://exergy-connect.github.io/real-estate-view/
 
+Also deployed at https://real-estate-view.jvb127.workers.dev/
+Status: https://real-estate-view.jvb127.workers.dev/api/status
+MCP: https://real-estate-view.jvb127.workers.dev/api/mcp/sse
+
 ## Build Process and Cloudflare Structure
 
 ### Build Process
