@@ -114,6 +114,15 @@
             color: white;
             padding: 30px;
             text-align: center;
+            position: relative;
+        }
+
+        .header-version {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            font-size: 0.8em;
+            opacity: 0.9;
         }
 
         .header h1 {
@@ -182,6 +191,19 @@
             font-weight: 700;
             color: #c0392b;
         }
+
+        .show-all-btn {
+            padding: 8px 14px;
+            background: #c0392b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+        .show-all-btn:hover { background: #a93226; }
+        .show-all-btn:active { background: #922b21; }
 
         .map-container {
             position: relative;
@@ -262,6 +284,7 @@
 <body>
     <div class="container">
         <div class="header">
+            <span class="header-version">Version: 2025-03-10</span>
             <h1>🔥 Houston Crime Heat Map 2025</h1>
             <p>Interactive visualization of crime incidents reported in Houston, Texas</p>
         </div>
@@ -303,6 +326,9 @@
                 <span class="stat-label">With Coordinates</span>
                 <span class="stat-value" id="withCoordinates">0</span>
             </div>
+            <div class="stat-item" id="showAllHeatContainer" style="display: none;">
+                <button type="button" id="showAllHeatBtn" class="show-all-btn">Show all</button>
+            </div>
         </div>
 
         <div class="map-container">
@@ -326,7 +352,10 @@
         </div>
     </div>
 
-    <!-- Load consolidated data -->
+    <!-- Pako: used as fallback on iOS where fetch(data:base64,...) can throw "index not in allowed range".
+         Pako path uses atob() + Uint8Array.from() + pako.inflate() on the in-page base64 string (no fetch, no data URL). -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"></script>
+    <!-- Load consolidated data (provides getConsolidatedData and getConsolidatedDataSync) -->
     <script src="output/consolidated_data.js"></script>
     
     <script>
@@ -337,6 +366,11 @@
         let filteredCrimeData = [];
         let crimeTypes = new Set();
         const MAX_MARKERS_FOR_TOOLTIPS = 100; // Show individual markers when <= 100 visible
+        const MAX_MARKERS_WHEN_HEAT_UNAVAILABLE = 2000; // Fallback cap when heat layer fails (e.g. iOS)
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const IOS_HEAT_LIMIT = 1000; // Limit heat points on iOS at start to avoid DOMException
+        let heatLayerUnavailable = false;
+        let showAllHeatOnIOS = false; // When true, use all points on iOS (or already fell back to markers)
         let selectedLocation = null; // { lat, lng } when opened with ?lat=&lng=
 
         // Parse lat, lng, zoom from URL (e.g. ?lat=29.76&lng=-95.37&zoom=14)
@@ -424,8 +458,33 @@
             const loadingIndicator = document.getElementById('loadingIndicator');
             
             try {
-                // Use the async function from consolidated_data.js
-                const data = await getConsolidatedData();
+                // Prefer loading JSON via fetch (works when page is served over HTTP; avoids
+                // iOS Safari "The index is not in the allowed range" with giant data URLs)
+                let data;
+                let loadStep = 'fetch';
+                try {
+                    const resp = await fetch('output/consolidated_data.json');
+                    if (resp.ok) {
+                        data = await resp.json();
+                    } else {
+                        throw new Error(resp.status + ' ' + resp.statusText);
+                    }
+                } catch (fetchErr) {
+                    loadStep = 'async embedded';
+                    try {
+                        if (typeof getConsolidatedData !== 'function') {
+                            throw new Error('getConsolidatedData is not defined. Is output/consolidated_data.js loaded?');
+                        }
+                        data = await getConsolidatedData();
+                    } catch (asyncErr) {
+                        loadStep = 'sync embedded';
+                        if (typeof getConsolidatedDataSync === 'function' && typeof pako !== 'undefined') {
+                            data = getConsolidatedDataSync();
+                        } else {
+                            throw new Error('pako or output/consolidated_data.js not loaded');
+                        }
+                    }
+                }
                 
                 // Extract data - crime_incident may be nested under crime_zipcode
                 const crimeIncidents = data.data?.crime_incident || {};
@@ -514,8 +573,21 @@
                 document.getElementById('legend').style.display = 'block';
                 
             } catch (error) {
-                console.error('Error loading crime data:', error);
-                loadingIndicator.textContent = 'Error loading data: ' + error.message;
+                const step = typeof loadStep !== 'undefined' ? ` [${loadStep}]` : '';
+                let msg = 'Error loading data' + step + ': ' + (error?.message || String(error));
+                if (/index|range/i.test(msg)) {
+                    msg += '. On iPhone/Safari, open this page from a server (e.g. the deployed site or a local server) so data loads from the JSON file instead.';
+                }
+                loadingIndicator.textContent = msg;
+                (function (err) {
+                    var script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+                    document.body.appendChild(script);
+                    script.onload = function () {
+                        eruda.init();
+                        console.error('Error loading crime data:', err);
+                    };
+                })(error);
             }
         }
 
@@ -567,17 +639,21 @@
         function updateDisplayMode() {
             const visibleCrimes = getVisibleCrimes();
             const visibleCount = visibleCrimes.length;
-            
-            if (visibleCount <= MAX_MARKERS_FOR_TOOLTIPS && visibleCount > 0) {
-                // Show individual markers with tooltips
+            const useMarkers = heatLayerUnavailable ||
+                (visibleCount > 0 && visibleCount <= MAX_MARKERS_FOR_TOOLTIPS);
+
+            if (useMarkers && visibleCount > 0) {
                 if (heatLayer) {
                     map.removeLayer(heatLayer);
                     heatLayer = null;
                 }
-                createIndividualMarkers(visibleCrimes);
-                document.getElementById('displayedIncidents').textContent = visibleCount.toLocaleString();
-            } else {
-                // Show heat layer
+                const maxMarkers = heatLayerUnavailable ? MAX_MARKERS_WHEN_HEAT_UNAVAILABLE : visibleCount;
+                const toShow = visibleCount <= maxMarkers ? visibleCrimes : visibleCrimes.slice(0, maxMarkers);
+                createIndividualMarkers(toShow);
+                document.getElementById('displayedIncidents').textContent = visibleCount <= maxMarkers
+                    ? visibleCount.toLocaleString()
+                    : 'Showing ' + maxMarkers.toLocaleString() + ' of ' + visibleCount.toLocaleString();
+            } else if (!heatLayerUnavailable) {
                 markerLayer.clearLayers();
                 updateHeatMap();
             }
@@ -595,36 +671,94 @@
                 return;
             }
 
-            // Prepare heat map points
-            const heatPoints = filteredCrimeData.map(crime => [
-                crime.lat,
-                crime.lng,
-                1.0 // intensity
-            ]);
+            // Prepare heat map points (only valid finite lat/lng for leaflet-heat)
+            const heatPoints = filteredCrimeData
+                .filter(c => Number.isFinite(c.lat) && Number.isFinite(c.lng))
+                .map(crime => [crime.lat, crime.lng, 1.0]);
+
+            if (heatPoints.length === 0) {
+                document.getElementById('displayedIncidents').textContent = '0';
+                updateShowAllButton(false, 0, 0);
+                return;
+            }
+
+            // On iOS, limit points at start to avoid DOMException; user can click "Show all"
+            const usePoints = (isIOS && !showAllHeatOnIOS && heatPoints.length > IOS_HEAT_LIMIT)
+                ? heatPoints.slice(0, IOS_HEAT_LIMIT)
+                : heatPoints;
+            const isLimited = usePoints.length < heatPoints.length;
 
             // Get intensity and radius from sliders
             const intensity = parseFloat(document.getElementById('intensitySlider').value);
             const radius = parseInt(document.getElementById('radiusSlider').value);
 
-            // Create heat layer
-            heatLayer = L.heatLayer(heatPoints, {
-                radius: radius,
-                blur: radius * 0.8,
-                maxZoom: 17,
-                max: intensity,
-                gradient: {
-                    0.0: 'blue',
-                    0.2: 'cyan',
-                    0.4: 'lime',
-                    0.6: 'yellow',
-                    0.8: 'orange',
-                    1.0: 'red'
+            try {
+                heatLayer = L.heatLayer(usePoints, {
+                    radius: radius,
+                    blur: radius * 0.8,
+                    maxZoom: 17,
+                    max: intensity,
+                    gradient: {
+                        0.0: 'blue',
+                        0.2: 'cyan',
+                        0.4: 'lime',
+                        0.6: 'yellow',
+                        0.8: 'orange',
+                        1.0: 'red'
+                    }
+                }).addTo(map);
+            } catch (heatErr) {
+                heatLayerUnavailable = true;
+                showAllHeatOnIOS = true; // so we don't retry heat on next update
+                if (heatLayer) {
+                    try { map.removeLayer(heatLayer); } catch (_) {}
+                    heatLayer = null;
                 }
-            }).addTo(map);
+                updateShowAllButton(false, 0, 0);
+                (function (err) {
+                    var script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+                    document.body.appendChild(script);
+                    script.onload = function () {
+                        eruda.init();
+                        console.error('Leaflet heat layer error (fallback to markers):', err);
+                    };
+                })(heatErr);
+                updateDisplayMode();
+                return;
+            }
 
-            // Update displayed count (total filtered, not just visible)
-            document.getElementById('displayedIncidents').textContent = filteredCrimeData.length.toLocaleString();
+            // Update displayed count; on iOS limited show "1,000 of N"
+            if (isLimited) {
+                document.getElementById('displayedIncidents').textContent = usePoints.length.toLocaleString() + ' of ' + heatPoints.length.toLocaleString();
+            } else {
+                document.getElementById('displayedIncidents').textContent = filteredCrimeData.length.toLocaleString();
+            }
+            updateShowAllButton(isLimited, usePoints.length, heatPoints.length);
         }
+
+        function updateShowAllButton(show, showing, total) {
+            const container = document.getElementById('showAllHeatContainer');
+            const btn = document.getElementById('showAllHeatBtn');
+            if (!container || !btn) return;
+            if (show && isIOS && total > IOS_HEAT_LIMIT) {
+                container.style.display = 'flex';
+                btn.textContent = 'Show all ' + total.toLocaleString() + ' incidents';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        // Show all heat points on iOS (may fall back to markers if heat throws)
+        document.getElementById('showAllHeatBtn').addEventListener('click', function() {
+            showAllHeatOnIOS = true;
+            const visibleCrimes = getVisibleCrimes();
+            if (heatLayerUnavailable || (visibleCrimes.length > 0 && visibleCrimes.length <= MAX_MARKERS_FOR_TOOLTIPS)) {
+                updateDisplayMode();
+            } else {
+                updateHeatMap();
+            }
+        });
 
         // Filter by crime type
         document.getElementById('crimeTypeFilter').addEventListener('change', applyFilters);
@@ -638,9 +772,10 @@
         // Update intensity
         document.getElementById('intensitySlider').addEventListener('input', function() {
             document.getElementById('intensityValue').textContent = this.value;
-            // Only update heat map if we're showing heat layer, not individual markers
             const visibleCrimes = getVisibleCrimes();
-            if (visibleCrimes.length > MAX_MARKERS_FOR_TOOLTIPS || visibleCrimes.length === 0) {
+            if (heatLayerUnavailable) {
+                updateDisplayMode();
+            } else if (visibleCrimes.length > MAX_MARKERS_FOR_TOOLTIPS || visibleCrimes.length === 0) {
                 updateHeatMap();
             }
         });
@@ -648,9 +783,10 @@
         // Update radius
         document.getElementById('radiusSlider').addEventListener('input', function() {
             document.getElementById('radiusValue').textContent = this.value;
-            // Only update heat map if we're showing heat layer, not individual markers
             const visibleCrimes = getVisibleCrimes();
-            if (visibleCrimes.length > MAX_MARKERS_FOR_TOOLTIPS || visibleCrimes.length === 0) {
+            if (heatLayerUnavailable) {
+                updateDisplayMode();
+            } else if (visibleCrimes.length > MAX_MARKERS_FOR_TOOLTIPS || visibleCrimes.length === 0) {
                 updateHeatMap();
             }
         });
