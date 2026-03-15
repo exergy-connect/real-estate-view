@@ -1854,6 +1854,19 @@
             toggleDraggingState(marker, school, isCurrentlyDraggable);
         };
 
+        // Days on market from listing_date (listing day = 0, next day = 0, day after = 1, etc.)
+        function getDaysOnMarket(listingDateStr) {
+            if (!listingDateStr || listingDateStr === 'Just Listed') return null;
+            const listingDate = new Date(listingDateStr);
+            if (isNaN(listingDate.getTime())) return null;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            listingDate.setHours(0, 0, 0, 0);
+            const diffTime = today - listingDate;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays >= 0 ? Math.max(0, diffDays - 1) : null;
+        }
+
         // Calculate value ranges for gradient visualizations
         function calculateValueRanges() {
             if (allProperties.length === 0) return;
@@ -1870,20 +1883,8 @@
                 propertyValueRanges.sqft = { min: Math.min(...sqfts), max: Math.max(...sqfts) };
             }
             
-            // Days on market range (calculate from listing_date)
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const daysOnMarket = allProperties
-                .map(p => {
-                    if (!p.listing_date || p.listing_date === 'Just Listed') return null;
-                    const listingDate = new Date(p.listing_date);
-                    if (isNaN(listingDate.getTime())) return null;
-                    listingDate.setHours(0, 0, 0, 0);
-                    const diffTime = today - listingDate;
-                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                    return diffDays >= 0 ? diffDays : null;
-                })
-                .filter(d => d != null);
+            // Days on market range
+            const daysOnMarket = allProperties.map(p => getDaysOnMarket(p.listing_date)).filter(d => d != null);
             if (daysOnMarket.length > 0) {
                 propertyValueRanges.days_on_market = { min: Math.min(...daysOnMarket), max: Math.max(...daysOnMarket) };
             }
@@ -1937,19 +1938,8 @@
                 return { fill: `rgb(${r}, ${g}, 0)`, stroke: '#fff' };
             } else if (mode === 'days_on_market') {
                 // Gradient by days on market (green = recent/new, red = old)
-                if (!propertyValueRanges.days_on_market || !prop.listing_date || prop.listing_date === 'Just Listed') {
-                    return { fill: '#6c757d', stroke: '#fff' };
-                }
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const listingDate = new Date(prop.listing_date);
-                if (isNaN(listingDate.getTime())) {
-                    return { fill: '#6c757d', stroke: '#fff' };
-                }
-                listingDate.setHours(0, 0, 0, 0);
-                const diffTime = today - listingDate;
-                const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                if (days < 0) {
+                const days = getDaysOnMarket(prop.listing_date);
+                if (!propertyValueRanges.days_on_market || days == null) {
                     return { fill: '#6c757d', stroke: '#fff' };
                 }
                 const range = propertyValueRanges.days_on_market;
@@ -3266,19 +3256,7 @@
                 const isSelected = selectedProperties.has(prop.mls_number);
                 const isInFloodRisk = isPropertyInFloodRiskArea(prop);
                 const isOpportunityZone = isPropertyInOpportunityZone(prop);
-                
-                // Calculate days on market from listing_date
-                let daysOnMarket = null;
-                if (prop.listing_date && prop.listing_date !== 'Just Listed') {
-                    const listingDate = new Date(prop.listing_date);
-                    const today = new Date();
-                    // Set time to midnight for accurate day calculation
-                    today.setHours(0, 0, 0, 0);
-                    listingDate.setHours(0, 0, 0, 0);
-                    const diffTime = today - listingDate;
-                    daysOnMarket = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                    if (daysOnMarket < 0) daysOnMarket = null;
-                }
+                const daysOnMarket = getDaysOnMarket(prop.listing_date);
 
                 return `
                     <div class="property-card ${isSelected ? 'selected' : ''} ${isOpportunityZone ? 'opportunity-zone' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
