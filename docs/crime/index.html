@@ -264,9 +264,8 @@
         </div>
     </div>
 
-    <!-- Load consolidated data from xFrame gzipped JS bundle -->
-    <!--script src="xframe/output/consolidated_data.gz.js"></script-->
-    <script src="output/consolidated_data.js"></script>
+    <!-- Load consolidated data from xFrame gzipped JS bundle (xframe/output from consolidation) -->
+    <script src="xframe/output/consolidated_data.gz.js"></script>
     
     <script>
         let map;
@@ -362,10 +361,10 @@
             
             try {
                 // Load from local output bundle (defines getConsolidatedData)
-                if (typeof getConsolidatedData !== 'function') {
-                    throw new Error('getConsolidatedData is not defined. Is output/consolidated_data.js loaded?');
+                if (typeof getConsolidated_data !== 'function') {
+                    throw new Error('getConsolidated_data is not defined. Is xframe/output/consolidated_data.gz.js loaded?');
                 }
-                const data = await getConsolidatedData();
+                const data = await getConsolidated_data();
                 
                 // Extract data - crime_incident may be nested under crime_zipcode
                 const crimeIncidents = data.data?.crime_incident || {};
