@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-2020-12/schema",
+  "$schema": "https://json-schema.org/draft-2020-12/schema",
   "title": "Consolidated Data Model",
   "description": "Consolidated entity schemas from data model files",
   "$defs": {
@@ -8,7 +8,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "City name (primary key)"
+          "description": "City name (primary key)",
+          "x-primaryKey": true
         },
         "state": {
           "type": "string",
@@ -24,24 +25,18 @@
           "type": "array",
           "description": "ZIP codes within this city",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/zipcode"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/zipcode"
           }
         }
       },
+      "description": "City information linked to state.\nLinked to state via state foreign key as parent.\n",
       "required": [
         "name",
         "state"
       ],
       "x-primaryKey": "name",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "crime_stats": {
       "type": "object",
@@ -54,7 +49,8 @@
               "entity": "zipcode_area",
               "parent_array": "crime_statistics"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "violent_crime": {
           "type": "number",
@@ -65,12 +61,13 @@
           "description": "Property crime score (1-100 scale, US average: 35.4)"
         }
       },
+      "description": "Crime scores for ZIP code areas from BestPlaces.net.\nScores are on a scale of 1 (low) to 100 (high crime).\nUS averages: violent 22.7, property 35.4.\nLinked to zipcode_area via zipcode foreign key. One crime stats record per ZIP code.\n",
       "required": [
         "zipcode"
       ],
       "x-primaryKey": "zipcode",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "demographic_stats": {
       "type": "object",
@@ -83,7 +80,8 @@
               "entity": "zipcode_area",
               "parent_array": "demographics"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "hispanic": {
           "type": "number",
@@ -102,19 +100,21 @@
           "description": "Percentage of Asian population (0-100)"
         }
       },
+      "description": "Demographic breakdown by ZIP code area showing racial/ethnic composition.\nPercentages represent the proportion of the population in each category.\n",
       "required": [
         "zipcode"
       ],
       "x-primaryKey": "zipcode",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "fault": {
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the fault key point (short string)"
+          "description": "Unique identifier for the fault key point (short string)",
+          "x-primaryKey": true
         },
         "fault_system_name": {
           "type": "string",
@@ -143,21 +143,23 @@
           "description": "Human-readable location description"
         }
       },
+      "description": "A key point along a fault system with GPS coordinates.\nLinked to fault_system via fault_system_name foreign key.\n",
       "required": [
         "id",
         "fault_system_name",
         "description"
       ],
       "x-primaryKey": "id",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "fault_system": {
       "type": "object",
       "properties": {
         "name": {
           "type": "string",
-          "description": "Fault system name (e.g., 'Long Point Fault')"
+          "description": "Fault system name (e.g., 'Long Point Fault')",
+          "x-primaryKey": true
         },
         "type": {
           "type": "string",
@@ -175,30 +177,25 @@
           "type": "array",
           "description": "Array of key points along the fault",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/fault"
-              },
-              {
-                "type": "string"
-              }
-            ]
+            "$ref": "#/$defs/fault"
           }
         }
       },
+      "description": "Major surface expressions of Houston growth faults with GPS coordinates.\nThese faults are active and can cause foundation issues for properties.\n",
       "required": [
         "name"
       ],
       "x-primaryKey": "name",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "geographic_area": {
       "type": "object",
       "properties": {
         "area_id": {
           "type": "string",
-          "description": "Unique identifier for the geographic area (format: type_name, e.g., 'neighborhood_the_heights')"
+          "description": "Unique identifier for the geographic area (format: type_name, e.g., 'neighborhood_the_heights')",
+          "x-primaryKey": true
         },
         "area_type": {
           "type": "string",
@@ -240,39 +237,26 @@
           "type": "array",
           "description": "Geographic bounds for this area (typically one bounds object per area)",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/geographic_bounds"
-              },
-              {
-                "type": "string"
-              }
-            ]
+            "$ref": "#/$defs/geographic_bounds"
           }
         },
         "schools": {
           "type": "array",
           "description": "Schools associated with this geographic area (school districts/school zones)",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/school"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/school"
           }
         }
       },
+      "description": "A unified entity representing various types of geographic areas including neighborhoods,\nmarket sectors, exurb hubs, market rings, and neighborhood polygons. Each area has a type,\nname, description, optional zip codes, and geographic bounds. Replaces separate entities\nfor upcoming_area, market_sector, exurb_hub, market_ring, and neighborhood_polygon.\n",
       "required": [
         "area_id",
         "area_type",
         "name"
       ],
       "x-primaryKey": "area_id",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "geographic_bounds": {
       "type": "object",
@@ -285,7 +269,8 @@
               "entity": "geographic_area",
               "parent_array": "bounds"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "north_lat": {
           "type": "number",
@@ -304,6 +289,7 @@
           "description": "Eastern longitude boundary"
         }
       },
+      "description": "Geographic boundary definition using rectangular bounds (north, south, east, west).\nRepresents a bounding box for geographic areas. Nested under geographic_area entities.\nEach geographic area typically has one bounds object, but multiple bounds are supported\nfor complex polygons that require multiple bounding boxes.\n",
       "required": [
         "area_id",
         "north_lat",
@@ -312,15 +298,390 @@
         "east_lng"
       ],
       "x-primaryKey": "area_id",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
+    },
+    "hcad_real_acct": {
+      "type": "object",
+      "properties": {
+        "hcad_account": {
+          "type": "string",
+          "description": "HCAD real property account number (source column `acct`); trim fixed-width padding.",
+          "x-primaryKey": true,
+          "x-source": "Column: acct"
+        },
+        "yr": {
+          "type": "integer",
+          "minimum": 1801,
+          "maximum": 2099,
+          "description": "Tax roll year from column `yr` in real_acct.txt (four-digit calendar year).",
+          "x-source": "Column: yr"
+        },
+        "mailto": {
+          "type": "string",
+          "description": "Column `mailto` from real_acct.txt.",
+          "x-source": "Column: mailto"
+        },
+        "mail_addr_1": {
+          "type": "string",
+          "description": "Column `mail_addr_1` from real_acct.txt.",
+          "x-source": "Column: mail_addr_1"
+        },
+        "mail_addr_2": {
+          "type": "string",
+          "description": "Column `mail_addr_2` from real_acct.txt.",
+          "x-source": "Column: mail_addr_2"
+        },
+        "mail_city": {
+          "type": "string",
+          "description": "Column `mail_city` from real_acct.txt.",
+          "x-source": "Column: mail_city"
+        },
+        "mail_state": {
+          "type": "string",
+          "description": "Column `mail_state` from real_acct.txt.",
+          "x-source": "Column: mail_state"
+        },
+        "mail_zip": {
+          "type": "string",
+          "description": "Column `mail_zip` from real_acct.txt.",
+          "x-source": "Column: mail_zip"
+        },
+        "mail_country": {
+          "type": "string",
+          "description": "Column `mail_country` from real_acct.txt.",
+          "x-source": "Column: mail_country"
+        },
+        "undeliverable": {
+          "type": "string",
+          "description": "Column `undeliverable` from real_acct.txt.",
+          "x-source": "Column: undeliverable"
+        },
+        "str_pfx": {
+          "type": "string",
+          "description": "Column `str_pfx` from real_acct.txt.",
+          "x-source": "Column: str_pfx"
+        },
+        "str_num": {
+          "type": "integer",
+          "description": "Column `str_num` from real_acct.txt.",
+          "x-source": "Column: str_num"
+        },
+        "str_num_sfx": {
+          "type": "string",
+          "description": "Column `str_num_sfx` from real_acct.txt.",
+          "x-source": "Column: str_num_sfx"
+        },
+        "str": {
+          "type": "string",
+          "description": "Column `str` from real_acct.txt.",
+          "x-source": "Column: str"
+        },
+        "str_sfx": {
+          "type": "string",
+          "description": "Column `str_sfx` from real_acct.txt.",
+          "x-source": "Column: str_sfx"
+        },
+        "str_sfx_dir": {
+          "type": "string",
+          "description": "Column `str_sfx_dir` from real_acct.txt.",
+          "x-source": "Column: str_sfx_dir"
+        },
+        "str_unit": {
+          "type": "string",
+          "description": "Column `str_unit` from real_acct.txt.",
+          "x-source": "Column: str_unit"
+        },
+        "site_addr_1": {
+          "type": "string",
+          "description": "Column `site_addr_1` from real_acct.txt.",
+          "x-source": "Column: site_addr_1"
+        },
+        "site_addr_2": {
+          "type": "string",
+          "description": "Column `site_addr_2` from real_acct.txt.",
+          "x-source": "Column: site_addr_2"
+        },
+        "zipcode": {
+          "type": "integer",
+          "description": "Site address ZIP from column site_addr_3, parsed as integer (first five digits; ZIP+4 uses base ZIP). (FK to zipcode_area is not modeled here — har_model zipcode_area has no hcad_real_accts array.)",
+          "x-source": "Column: site_addr_3"
+        },
+        "state_class": {
+          "type": "string",
+          "description": "Column `state_class` from real_acct.txt.",
+          "x-source": "Column: state_class"
+        },
+        "school_dist": {
+          "type": "string",
+          "description": "Column `school_dist` from real_acct.txt.",
+          "x-source": "Column: school_dist"
+        },
+        "map_facet": {
+          "type": "string",
+          "description": "Column `map_facet` from real_acct.txt.",
+          "x-source": "Column: map_facet"
+        },
+        "key_map": {
+          "type": "string",
+          "description": "Column `key_map` from real_acct.txt.",
+          "x-source": "Column: key_map"
+        },
+        "neighborhood_code": {
+          "type": "string",
+          "description": "Column `Neighborhood_Code` from real_acct.txt.",
+          "x-source": "Column: Neighborhood_Code"
+        },
+        "neighborhood_grp": {
+          "type": "string",
+          "description": "Column `Neighborhood_Grp` from real_acct.txt.",
+          "x-source": "Column: Neighborhood_Grp"
+        },
+        "market_area_1": {
+          "type": "string",
+          "description": "Column `Market_Area_1` from real_acct.txt.",
+          "x-source": "Column: Market_Area_1"
+        },
+        "mkt_area1_dscr": {
+          "type": "string",
+          "description": "Column `Market_Area_1_Dscr` from real_acct.txt (JSON field `mkt_area1_dscr`).",
+          "x-source": "Column: Market_Area_1_Dscr"
+        },
+        "market_area_2": {
+          "type": "string",
+          "description": "Column `Market_Area_2` from real_acct.txt.",
+          "x-source": "Column: Market_Area_2"
+        },
+        "mkt_area2_dscr": {
+          "type": "string",
+          "description": "Column `Market_Area_2_Dscr` from real_acct.txt (JSON field `mkt_area2_dscr`).",
+          "x-source": "Column: Market_Area_2_Dscr"
+        },
+        "econ_area": {
+          "type": "string",
+          "description": "Column `econ_area` from real_acct.txt.",
+          "x-source": "Column: econ_area"
+        },
+        "econ_bld_class": {
+          "type": "string",
+          "description": "Column `econ_bld_class` from real_acct.txt.",
+          "x-source": "Column: econ_bld_class"
+        },
+        "center_code": {
+          "type": "string",
+          "description": "Column `center_code` from real_acct.txt.",
+          "x-source": "Column: center_code"
+        },
+        "yr_impr": {
+          "type": "integer",
+          "minimum": 1801,
+          "maximum": 2099,
+          "description": "Year of improvement when present; source 0 or blank → omit field.",
+          "x-source": "Column: yr_impr"
+        },
+        "yr_annexed": {
+          "type": "integer",
+          "minimum": 1801,
+          "maximum": 2099,
+          "description": "Annexation year when present; source 0 or blank → omit field.",
+          "x-source": "Column: yr_annexed"
+        },
+        "splt_dt": {
+          "type": "string",
+          "description": "Column `splt_dt` from real_acct.txt.",
+          "x-source": "Column: splt_dt"
+        },
+        "dsc_cd": {
+          "type": "string",
+          "description": "Column `dsc_cd` from real_acct.txt.",
+          "x-source": "Column: dsc_cd"
+        },
+        "nxt_bld": {
+          "type": "integer",
+          "description": "Column `nxt_bld` from real_acct.txt.",
+          "x-source": "Column: nxt_bld"
+        },
+        "bld_ar": {
+          "type": "integer",
+          "description": "Column `bld_ar` from real_acct.txt.",
+          "x-source": "Column: bld_ar"
+        },
+        "land_ar": {
+          "type": "integer",
+          "description": "Column `land_ar` from real_acct.txt.",
+          "x-source": "Column: land_ar"
+        },
+        "acreage": {
+          "type": "number",
+          "description": "Column `acreage` from real_acct.txt.",
+          "x-source": "Column: acreage"
+        },
+        "cap_acct": {
+          "type": "string",
+          "description": "Column `Cap_acct` from real_acct.txt.",
+          "x-source": "Column: Cap_acct"
+        },
+        "shared_cad": {
+          "type": "string",
+          "description": "Column `shared_cad` from real_acct.txt.",
+          "x-source": "Column: shared_cad"
+        },
+        "land_val": {
+          "type": "integer",
+          "description": "Column `land_val` from real_acct.txt.",
+          "x-source": "Column: land_val"
+        },
+        "bld_val": {
+          "type": "integer",
+          "description": "Column `bld_val` from real_acct.txt.",
+          "x-source": "Column: bld_val"
+        },
+        "x_features_val": {
+          "type": "integer",
+          "description": "Column `x_features_val` from real_acct.txt.",
+          "x-source": "Column: x_features_val"
+        },
+        "ag_val": {
+          "type": "integer",
+          "description": "Column `ag_val` from real_acct.txt.",
+          "x-source": "Column: ag_val"
+        },
+        "assessed_val": {
+          "type": "integer",
+          "description": "Column `assessed_val` from real_acct.txt.",
+          "x-source": "Column: assessed_val"
+        },
+        "tot_appr_val": {
+          "type": "integer",
+          "description": "Column `tot_appr_val` from real_acct.txt.",
+          "x-source": "Column: tot_appr_val"
+        },
+        "tot_mkt_val": {
+          "type": "integer",
+          "description": "Column `tot_mkt_val` from real_acct.txt.",
+          "x-source": "Column: tot_mkt_val"
+        },
+        "prior_land_val": {
+          "type": "integer",
+          "description": "Column `prior_land_val` from real_acct.txt.",
+          "x-source": "Column: prior_land_val"
+        },
+        "prior_bld_val": {
+          "type": "integer",
+          "description": "Column `prior_bld_val` from real_acct.txt.",
+          "x-source": "Column: prior_bld_val"
+        },
+        "prior_xfeat_val": {
+          "type": "integer",
+          "description": "Column `prior_x_features_val` from real_acct.txt (JSON field `prior_xfeat_val`).",
+          "x-source": "Column: prior_x_features_val"
+        },
+        "prior_ag_val": {
+          "type": "integer",
+          "description": "Column `prior_ag_val` from real_acct.txt.",
+          "x-source": "Column: prior_ag_val"
+        },
+        "prior_totappr_val": {
+          "type": "integer",
+          "description": "Column `prior_tot_appr_val` from real_acct.txt (JSON field `prior_totappr_val`).",
+          "x-source": "Column: prior_tot_appr_val"
+        },
+        "prior_totmkt_val": {
+          "type": "integer",
+          "description": "Column `prior_tot_mkt_val` from real_acct.txt (JSON field `prior_totmkt_val`).",
+          "x-source": "Column: prior_tot_mkt_val"
+        },
+        "new_construction_val": {
+          "type": "integer",
+          "description": "Column `new_construction_val` from real_acct.txt.",
+          "x-source": "Column: new_construction_val"
+        },
+        "tot_rcn_val": {
+          "type": "integer",
+          "description": "Column `tot_rcn_val` from real_acct.txt.",
+          "x-source": "Column: tot_rcn_val"
+        },
+        "value_status": {
+          "type": "string",
+          "description": "Column `value_status` from real_acct.txt.",
+          "x-source": "Column: value_status"
+        },
+        "noticed": {
+          "type": "string",
+          "description": "Column `noticed` from real_acct.txt.",
+          "x-source": "Column: noticed"
+        },
+        "notice_dt": {
+          "type": "string",
+          "description": "Column `notice_dt` from real_acct.txt.",
+          "x-source": "Column: notice_dt"
+        },
+        "protested": {
+          "type": "string",
+          "description": "Column `protested` from real_acct.txt.",
+          "x-source": "Column: protested"
+        },
+        "certified_date": {
+          "type": "string",
+          "description": "Column `certified_date` from real_acct.txt.",
+          "x-source": "Column: certified_date"
+        },
+        "rev_dt": {
+          "type": "string",
+          "description": "Column `rev_dt` from real_acct.txt.",
+          "x-source": "Column: rev_dt"
+        },
+        "rev_by": {
+          "type": "string",
+          "description": "Column `rev_by` from real_acct.txt.",
+          "x-source": "Column: rev_by"
+        },
+        "new_own_dt": {
+          "type": "string",
+          "description": "Column `new_own_dt` from real_acct.txt.",
+          "x-source": "Column: new_own_dt"
+        },
+        "lgl_1": {
+          "type": "string",
+          "description": "Column `lgl_1` from real_acct.txt.",
+          "x-source": "Column: lgl_1"
+        },
+        "lgl_2": {
+          "type": "string",
+          "description": "Column `lgl_2` from real_acct.txt.",
+          "x-source": "Column: lgl_2"
+        },
+        "lgl_3": {
+          "type": "string",
+          "description": "Column `lgl_3` from real_acct.txt.",
+          "x-source": "Column: lgl_3"
+        },
+        "lgl_4": {
+          "type": "string",
+          "description": "Column `lgl_4` from real_acct.txt.",
+          "x-source": "Column: lgl_4"
+        },
+        "jurs": {
+          "type": "string",
+          "description": "Column `jurs` from real_acct.txt.",
+          "x-source": "Column: jurs"
+        }
+      },
+      "description": "HCAD real account / owner roll extract. Primary key hcad_account (roll account number). One row per account per tax year in typical extracts; record_id optional line surrogate.",
+      "required": [
+        "hcad_account"
+      ],
+      "x-primaryKey": "hcad_account",
+      "x-created": 1,
+      "x-version": 1
     },
     "property": {
       "type": "object",
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "MLS (Multiple Listing Service) number - unique identifier for the property"
+          "description": "MLS (Multiple Listing Service) number - unique identifier for the property",
+          "x-primaryKey": true
         },
         "zipcode": {
           "type": "integer",
@@ -356,108 +717,60 @@
           "type": "array",
           "description": "Street address details for this property",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_address"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_address"
           }
         },
         "detail": {
           "type": "array",
           "description": "Physical characteristics and details for this property",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_detail"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_detail"
           }
         },
         "geolocation": {
           "type": "array",
           "description": "Geolocation data including coordinates, elevation, flood zone, and fault proximity",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_geolocation"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_geolocation"
           }
         },
         "media": {
           "type": "array",
           "description": "Images and media associated with this property",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_media"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_media"
           }
         },
         "metadata": {
           "type": "array",
           "description": "Extraction and tracking metadata for this property",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_metadata"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_metadata"
           }
         },
         "economics": {
           "type": "array",
           "description": "Economic information for this property including pricing and maintenance fees",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_economics"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_economics"
           }
         },
         "property_schools": {
           "type": "array",
           "description": "School associations for this property, with separate links to elementary, middle, and high schools by school_id",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property_schools"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property_schools"
           }
         }
       },
+      "description": "Core property listing information from HAR.com foreclosure search results.\nContains the primary identifier, basic listing details, and pricing.\n",
       "required": [
         "mls_number",
         "zipcode"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_address": {
       "type": "object",
@@ -470,15 +783,41 @@
               "entity": "property",
               "parent_array": "address"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
-        "street_number": {
-          "type": "integer",
-          "description": "Street number portion of the property address (as integer)"
+        "site_address": {
+          "type": "object",
+          "properties": {
+            "street_number": {
+              "type": "integer",
+              "description": "Street number portion of the property address (as integer)"
+            },
+            "street": {
+              "type": "string",
+              "description": "Street name portion of the property address (may include unit suffix, e.g. '#1502')"
+            },
+            "zipcode": {
+              "type": "integer",
+              "description": "ZIP code as integer (first five digits when sourced from address text)"
+            }
+          },
+          "required": [],
+          "description": "Structured site location key: street number, street name, and ZIP (5-digit integer).\nUsed for matching to external parcel rolls (e.g. HCAD) and deduplication; city/state remain separate fields.\n"
         },
-        "street": {
-          "type": "string",
-          "description": "Street name portion of the property address"
+        "hcad_accounts": {
+          "type": "array",
+          "description": "Matched Harris County roll rows (see hcad-real-acct-model.yaml). Each item is keyed by hcad_account;\nfilled by har_model/hcad_lookup.py from Real_acct_owner/real_acct.txt.\n",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/hcad_real_acct"
+              }
+            ]
+          }
         },
         "city": {
           "type": "string",
@@ -488,21 +827,18 @@
           "type": "string",
           "description": "State abbreviation (e.g., 'TX', extracted from address)"
         },
-        "zipcode": {
-          "type": "integer",
-          "description": "ZIP code as integer (extracted from address)"
-        },
         "county": {
           "type": "string",
           "description": "County name (if available)"
         }
       },
+      "description": "Street address details for the property.\nLinked to property via mls_number foreign key (one-to-one relationship).\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_detail": {
       "type": "object",
@@ -515,7 +851,8 @@
               "entity": "property",
               "parent_array": "detail"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "property_type": {
           "type": "string",
@@ -554,12 +891,13 @@
           "description": "Year the property was built"
         }
       },
+      "description": "Physical characteristics and specifications of the property.\nLinked to property via mls_number foreign key.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_economics": {
       "type": "object",
@@ -572,7 +910,8 @@
               "entity": "property",
               "parent_array": "economics"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "price": {
           "type": "integer",
@@ -604,12 +943,13 @@
           "description": "Monthly maintenance fee in dollars (as integer)"
         }
       },
+      "description": "Economic information for the property, including pricing, calculated metrics, and maintenance fees.\nLinked to property via mls_number foreign key.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_geolocation": {
       "type": "object",
@@ -622,7 +962,8 @@
               "entity": "property",
               "parent_array": "geolocation"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "latitude": {
           "type": "number",
@@ -662,12 +1003,13 @@
           "description": "Foreign key reference to fault.id - the nearest fault key point"
         }
       },
+      "description": "Geographic coordinates, elevation, flood zone, and fault proximity data.\nLinked to property via mls_number foreign key.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_media": {
       "type": "object",
@@ -680,7 +1022,8 @@
               "entity": "property",
               "parent_array": "media"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "images": {
           "type": "array",
@@ -690,12 +1033,13 @@
           }
         }
       },
+      "description": "Images and media associated with the property listing.\nLinked to property via mls_number foreign key.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_metadata": {
       "type": "object",
@@ -708,7 +1052,8 @@
               "entity": "property",
               "parent_array": "metadata"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "index": {
           "type": "integer",
@@ -723,12 +1068,13 @@
           "description": "ISO timestamp when detail page data was fetched"
         }
       },
+      "description": "Metadata about when and how the property data was extracted.\nLinked to property via mls_number foreign key.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "property_schools": {
       "type": "object",
@@ -741,7 +1087,8 @@
               "entity": "property",
               "parent_array": "property_schools"
             }
-          ]
+          ],
+          "x-primaryKey": true
         },
         "elementary_school_id": {
           "type": "integer",
@@ -756,19 +1103,21 @@
           "description": "Foreign key reference to school.school_id for the high school assigned to this property"
         }
       },
+      "description": "Links properties to schools at each of the three school levels (elementary, middle, high).\nEach property can have one school assigned at each level, referenced by school_id.\nSchools can be linked to multiple properties.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "school": {
       "type": "object",
       "properties": {
         "school_id": {
           "type": "integer",
-          "description": "Unique school identifier from HAR.com (extracted from URL pattern: /school/{school_id}/...)"
+          "description": "Unique school identifier from HAR.com (extracted from URL pattern: /school/{school_id}/...)",
+          "x-primaryKey": true
         },
         "name": {
           "type": "string",
@@ -829,19 +1178,21 @@
           ]
         }
       },
+      "description": "School information extracted from HAR.com property detail pages.\nIncludes elementary, middle, and high schools. Each school can be linked to\nmultiple properties. Schools have their own geolocation data (latitude, longitude).\nSchools are referenced by properties via school_id foreign key.\n",
       "required": [
         "school_id"
       ],
       "x-primaryKey": "school_id",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "search_profile": {
       "type": "object",
       "properties": {
         "profile_id": {
           "type": "string",
-          "description": "Unique identifier for the search profile. Used as the primary key to store and retrieve search configurations."
+          "description": "Unique identifier for the search profile. Used as the primary key to store and retrieve search configurations.",
+          "x-primaryKey": true
         },
         "price": {
           "type": "object",
@@ -940,12 +1291,13 @@
           "default": false
         }
       },
+      "description": "Search profile defining property search criteria including price range, maintenance fee range,\nproperty types, zip codes, school grade filters, and opportunity zone filter. Used to save and reuse search configurations.\n",
       "required": [
         "profile_id"
       ],
       "x-primaryKey": "profile_id",
-      "x-created": 2,
-      "x-version": 2,
+      "x-created": 1,
+      "x-version": 1,
       "x-storage": {
         "type": "string",
         "enum": [
@@ -964,36 +1316,32 @@
           "description": "State abbreviation (e.g., 'TX') - primary key",
           "enum": [
             "TX"
-          ]
+          ],
+          "x-primaryKey": true
         },
         "cities": {
           "type": "array",
           "description": "Cities within this state",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/city"
-              },
-              {
-                "type": "string"
-              }
-            ]
+            "$ref": "#/$defs/city"
           }
         }
       },
+      "description": "State information with abbreviation as primary key.\n",
       "required": [
         "name"
       ],
       "x-primaryKey": "name",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "zipcode": {
       "type": "object",
       "properties": {
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer (primary key)"
+          "description": "ZIP code as integer (primary key)",
+          "x-primaryKey": true
         },
         "city": {
           "type": "string",
@@ -1013,69 +1361,52 @@
           "type": "array",
           "description": "Properties located in this ZIP code",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/property"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/property"
           }
         }
       },
+      "description": "ZIP code location details including city, state, and county.\nLinked to property via property.zipcode foreign key as parent.\nLinked to city via name foreign key as parent.\n",
       "required": [
         "zipcode"
       ],
       "x-primaryKey": "zipcode",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "zipcode_area": {
       "type": "object",
       "properties": {
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer"
+          "description": "ZIP code as integer",
+          "x-primaryKey": true
         },
         "crime_statistics": {
           "type": "array",
           "description": "Crime statistics for this ZIP code area (one record per ZIP code)",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/crime_stats"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/crime_stats"
           }
         },
         "demographics": {
           "type": "array",
           "description": "Demographic statistics for this ZIP code area",
           "items": {
-            "oneOf": [
-              {
-                "$ref": "#/$defs/demographic_stats"
-              },
-              {
-                "type": "integer"
-              }
-            ]
+            "$ref": "#/$defs/demographic_stats"
           }
         }
       },
+      "description": "Reference entity for ZIP code areas, linking crime statistics and demographics.\nEach ZIP code can have multiple neighborhoods, but demographics are at the ZIP code level.\nGeographic areas reference zipcodes through their zip_codes array field.\n",
       "required": [
         "zipcode"
       ],
       "x-primaryKey": "zipcode",
-      "x-created": 2,
-      "x-version": 2
+      "x-created": 1,
+      "x-version": 1
     },
     "change": {
       "type": "object",
+      "description": "Change log entry describing a versioned modification to the consolidated data model or data.",
       "properties": {
         "id": {
           "type": "integer",
@@ -1148,6 +1479,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/geographic_bounds"
+      }
+    },
+    "hcad_real_acct": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hcad_real_acct"
       }
     },
     "property": {
@@ -1236,18 +1573,12 @@
     }
   },
   "additionalProperties": false,
-  "changes": [
+  "x-changes": [
     {
       "id": 1,
-      "timestamp": "2026-03-02T23:26:07.371643",
+      "timestamp": "2026-03-20T00:04:50-05:00",
       "author": "jeroen",
-      "note": "Regenerate consolidated model with x-parents support"
-    },
-    {
-      "id": 2,
-      "timestamp": "2026-03-10T18:50:43.721011",
-      "author": "jeroen",
-      "note": "Consolidate har_model"
+      "note": "HAR model consolidation (clean output)"
     }
   ]
 }
