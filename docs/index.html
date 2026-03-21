@@ -228,6 +228,28 @@
             z-index: 1;
         }
 
+        .property-image-status {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            max-width: calc(100% - 16px);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            line-height: 1.25;
+            letter-spacing: 0.02em;
+            z-index: 14;
+            text-align: right;
+            background: rgba(33, 37, 41, 0.88);
+            color: #fff;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         .property-content {
             padding: 20px;
         }
@@ -598,6 +620,15 @@
             </div>
 
             <div class="filter-group">
+                <label for="listingTypeFilter">Sale / rent</label>
+                <select id="listingTypeFilter">
+                    <option value="">For rent or sale</option>
+                    <option value="rent">For rent only</option>
+                    <option value="sale">For sale</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                     <input type="checkbox" id="includeOlderProperties" style="width: auto; margin: 0; cursor: pointer;">
                     <span>Include older properties</span>
@@ -630,7 +661,7 @@
             </div>
 
             <div class="filter-group price-slider-container">
-                <label>Monthly Maintenance Fee Range</label>
+                <label>Monthly Maintenance Fee</label>
                 <div class="price-slider-wrapper">
                     <div id="maintenanceSlider" class="nouislider-target"></div>
                 </div>
@@ -735,6 +766,140 @@
         /** HCAD roll rows keyed by hcad_account (from consolidated data). */
         let hcadByAccount = {};
         const PORTFOLIO_STORAGE_KEY = 'har_portfolio_assignments_v1';
+
+        /** Sale list price, or monthly rent when rent-only (price is 0). Used for filters, sliders, stats. */
+        function effectivePriceAmount(prop) {
+            const p = prop.price || 0;
+            if (p > 0) return p;
+            const r = prop.monthly_rent;
+            return (r != null && r > 0) ? r : 0;
+        }
+
+        /** Human-readable primary price line (sale, rent/mo, or both). */
+        function formatListingPriceLabel(prop, options = {}) {
+            const rentFirst = options.rentFirst === true;
+            const sale = prop.price && prop.price > 0;
+            const rent = prop.monthly_rent != null && prop.monthly_rent > 0;
+            if (sale && rent) {
+                if (rentFirst) {
+                    return `$${prop.monthly_rent.toLocaleString()}/mo · $${prop.price.toLocaleString()}`;
+                }
+                return `$${prop.price.toLocaleString()} · $${prop.monthly_rent.toLocaleString()}/mo`;
+            }
+            if (sale) {
+                return `$${prop.price.toLocaleString()}`;
+            }
+            if (rent) {
+                return `$${prop.monthly_rent.toLocaleString()}/mo`;
+            }
+            return 'N/A';
+        }
+
+        /** Sale line with optional $/sqft; rent-only or sale+rent use formatListingPriceLabel patterns. */
+        function formatListingPriceWithPerSqft(prop, options = {}) {
+            const rentFirst = options.rentFirst === true;
+            const sale = prop.price && prop.price > 0;
+            const rent = prop.monthly_rent != null && prop.monthly_rent > 0;
+            const perSq = (prop.sqft && prop.sqft > 0)
+                ? ` <span style="font-size: 0.6em; color: #666;">($${Math.round((prop.price || 0) / prop.sqft).toLocaleString()}/sqft)</span>`
+                : '';
+            if (sale && rent) {
+                if (rentFirst) {
+                    return `$${prop.monthly_rent.toLocaleString()}/mo <span style="font-size: 0.6em; color: #666;">· $${prop.price.toLocaleString()}${perSq}</span>`;
+                }
+                return `$${prop.price.toLocaleString()}${perSq} <span style="font-size: 0.6em; color: #666;">· $${prop.monthly_rent.toLocaleString()}/mo</span>`;
+            }
+            if (sale) {
+                return `$${prop.price.toLocaleString()}${perSq}`;
+            }
+            return formatListingPriceLabel(prop, options);
+        }
+
+        /** Other MLS row linked to this listing (same physical property), if present in allProperties. */
+        function getLinkedSibling(prop, allProps) {
+            if (prop.linked_mls_number != null) {
+                const o = allProps.find(x => x.mls_number === prop.linked_mls_number);
+                if (o) return o;
+            }
+            return allProps.find(x => x.linked_mls_number === prop.mls_number) || null;
+        }
+
+        /** Merge paired sale/rent rows: canonical MLS is the lower number; economics from both; details from sale row unless rent-only filter. */
+        function mergeLinkedPairForDisplay(rowLo, rowHi, listingTypeFilter) {
+            const saleRow = (rowLo.price > 0) ? rowLo : (rowHi.price > 0 ? rowHi : rowLo);
+            const rentRow = (rowLo.monthly_rent != null && rowLo.monthly_rent > 0)
+                ? rowLo
+                : ((rowHi.monthly_rent != null && rowHi.monthly_rent > 0) ? rowHi : rowLo);
+            const rentOnly = listingTypeFilter === 'rent';
+            const detailSource = rentOnly ? rentRow : saleRow;
+            const merged = { ...rowLo };
+            merged.mls_number = rowLo.mls_number;
+            merged.linked_mls_number = rowHi.mls_number;
+            merged.price = (saleRow.price && saleRow.price > 0) ? saleRow.price : 0;
+            merged.monthly_rent = (rentRow.monthly_rent != null && rentRow.monthly_rent > 0)
+                ? rentRow.monthly_rent : null;
+            const hc1 = rowLo.hcad_accounts || [];
+            const hc2 = rowHi.hcad_accounts || [];
+            merged.hcad_accounts = [...new Set([...hc1, ...hc2])];
+            const overlayFields = ['city', 'state', 'county', 'street_number', 'street', 'zipcode', 'beds', 'full_baths', 'half_baths', 'sqft', 'lot_size_sqft', 'year_built', 'property_type', 'images', 'latitude', 'longitude', 'nearest_fault_meters', 'nearest_fault_id', 'description', 'listing_date', 'status', 'url', 'opportunity_zone', 'monthly_maintenance_fee'];
+            for (const f of overlayFields) {
+                const v = detailSource[f];
+                if (v === undefined || v === null) continue;
+                if (typeof v === 'string' && v.trim() === '') continue;
+                if (Array.isArray(v) && v.length === 0) continue;
+                merged[f] = v;
+            }
+            return merged;
+        }
+
+        /** One row per linked pair (lowest MLS), merged; unlinked rows unchanged. */
+        function buildListingViewMergedProperties(filtered, allProps) {
+            const listingTypeFilter = document.getElementById('listingTypeFilter')?.value || '';
+            // Rent-only: show every MLS that passes the filter. Merging would drop the higher-MLS
+            // rent row when the pair was already emitted as one merged card (13 vs 14 listings).
+            if (listingTypeFilter === 'rent') {
+                return filtered.map(p => ({ ...p }));
+            }
+            const filteredSet = new Set(filtered.map(p => p.mls_number));
+            const byMls = new Map(allProps.map(p => [p.mls_number, p]));
+            const result = [];
+            const emittedCanonical = new Set();
+
+            for (const p of allProps) {
+                const sib = getLinkedSibling(p, allProps);
+                if (!sib) continue;
+                const lo = Math.min(p.mls_number, sib.mls_number);
+                const hi = Math.max(p.mls_number, sib.mls_number);
+                if (p.mls_number !== lo) continue;
+                const rowLo = byMls.get(lo);
+                const rowHi = byMls.get(hi);
+                if (!rowLo || !rowHi) continue;
+                if (!filteredSet.has(lo) && !filteredSet.has(hi)) continue;
+                if (emittedCanonical.has(lo)) continue;
+                emittedCanonical.add(lo);
+                result.push(mergeLinkedPairForDisplay(rowLo, rowHi, listingTypeFilter));
+            }
+
+            for (const p of filtered) {
+                const sib = getLinkedSibling(p, allProps);
+                if (!sib) {
+                    result.push(p);
+                    continue;
+                }
+                const lo = Math.min(p.mls_number, sib.mls_number);
+                if (emittedCanonical.has(lo)) continue;
+                result.push(p);
+            }
+            return result;
+        }
+
+        function isMlsSelectedForListingView(mls) {
+            if (selectedProperties.has(mls)) return true;
+            const p = allProperties.find(x => x.mls_number === mls);
+            if (!p) return false;
+            const s = getLinkedSibling(p, allProperties);
+            return !!(s && selectedProperties.has(s.mls_number));
+        }
 
         function loadPortfolioAssignments() {
             try {
@@ -893,9 +1058,13 @@
                     </div></div>`;
             }
             const h = primary.row;
-            const listPrice = prop.price > 0 ? prop.price : null;
+            const saleListPrice = prop.price > 0 ? prop.price : null;
+            const monthlyRent = prop.monthly_rent != null && prop.monthly_rent > 0 ? prop.monthly_rent : null;
+            const rentOnly = saleListPrice == null && monthlyRent != null;
             const hcadMkt = h.tot_mkt_val != null ? Number(h.tot_mkt_val) : (h.assessed_val != null ? Number(h.assessed_val) : null);
-            const priceCmp = comparePriceCheck(listPrice, hcadMkt, 0.05);
+            const priceCmp = rentOnly
+                ? { cls: 'hcad-match-na', note: 'N/A' }
+                : comparePriceCheck(saleListPrice, hcadMkt, 0.05);
             const listSqft = prop.sqft > 0 ? prop.sqft : null;
             const hcadSqft = h.bld_ar != null ? Number(h.bld_ar) : null;
             const sqftCmp = compareNumber(listSqft, hcadSqft, 0.05);
@@ -909,7 +1078,8 @@
             return `
                 <div class="hcad-compare" onclick="event.stopPropagation()">
                     <h4>HCAD vs listing</h4>
-                    <div class="hcad-row"><span>List price</span><span>$${listPrice != null ? listPrice.toLocaleString() : '—'}</span></div>
+                    <div class="hcad-row"><span>List price</span><span>${saleListPrice != null ? '$' + saleListPrice.toLocaleString() : 'N/A'}</span></div>
+                    ${monthlyRent != null ? `<div class="hcad-row"><span>Monthly rent</span><span>$${monthlyRent.toLocaleString()}/mo</span></div>` : ''}
                     <div class="hcad-row"><span>HCAD mkt / assessed</span><span>${hcadMkt != null ? '$' + hcadMkt.toLocaleString() : '—'}</span></div>
                     <div class="hcad-row"><span>Price check</span><span class="${priceCmp.cls}">${priceCmp.note}</span></div>
                     <div class="hcad-row"><span>MLS sqft</span><span>${listSqft != null ? listSqft.toLocaleString() : '—'}</span></div>
@@ -1022,12 +1192,15 @@
                 const detail = prop.detail?.[0] || {};
                 const media = prop.media?.[0] || {};
                 const economics = prop.economics?.[0] || {};
+                const rental = prop.rental?.[0] || {};
                 const geolocation = prop.geolocation?.[0] || {};
                 const metadata = prop.metadata?.[0] || {};
                     
                     return {
                         mls_number: prop.mls_number,
+                        linked_mls_number: prop.linked_mls_number ?? null,
                         price: economics.price || 0,
+                        monthly_rent: rental.monthly_rent ?? null,
                         url: prop.url || '',
                         status: prop.status || '',
                         listing_date: prop.listing_date || '',
@@ -1592,8 +1765,8 @@
         function calculateValueRanges() {
             if (allProperties.length === 0) return;
             
-            // Price range
-            const prices = allProperties.map(p => p.price).filter(p => p != null && p > 0);
+            // Price range (sale price or monthly rent for rent-only)
+            const prices = allProperties.map(p => effectivePriceAmount(p)).filter(p => p != null && p > 0);
             if (prices.length > 0) {
                 propertyValueRanges.price = { min: Math.min(...prices), max: Math.max(...prices) };
             }
@@ -1630,12 +1803,13 @@
                 };
                 return typeColors[prop.property_type] || { fill: '#28a745', stroke: '#fff' };
             } else if (mode === 'price') {
-                // Gradient by price (green = high, red = low)
-                if (!propertyValueRanges.price || !prop.price || prop.price <= 0) {
+                // Gradient by price (green = high, red = low); uses rent when sale price is 0
+                const eff = effectivePriceAmount(prop);
+                if (!propertyValueRanges.price || !eff || eff <= 0) {
                     return { fill: '#6c757d', stroke: '#fff' };
                 }
                 const range = propertyValueRanges.price;
-                const ratio = (prop.price - range.min) / (range.max - range.min);
+                const ratio = (eff - range.min) / (range.max - range.min);
                 // Interpolate from red (low) to green (high)
                 const r = Math.round(255 * (1 - ratio));
                 const g = Math.round(255 * ratio);
@@ -1675,7 +1849,8 @@
                 return;
             }
             
-            console.log('Updating map, selected properties:', Array.from(selectedProperties), 'filtered properties:', filteredProperties.length);
+            const mapListingView = buildListingViewMergedProperties(filteredProperties, allProperties);
+            console.log('Updating map, selected properties:', Array.from(selectedProperties), 'listing view rows:', mapListingView.length);
             
             // Clear existing markers and layers
             faultMarkers.forEach(marker => map.removeLayer(marker));
@@ -1828,14 +2003,14 @@
                 });
             }
             
-            // Create a set of filtered property MLS numbers for quick lookup
-            const filteredMlsNumbers = new Set(filteredProperties.map(p => p.mls_number));
+            // Create a set of filtered property MLS numbers for quick lookup (canonical MLS after merge)
+            const filteredMlsNumbers = new Set(mapListingView.map(p => p.mls_number));
             
             // Add property markers - show all filtered properties, plus any selected properties that might be filtered out
             const propertiesToShow = new Map(); // Use Map to store both mlsNum and prop data
             
-            // Add all filtered properties
-            filteredProperties.forEach(prop => {
+            // Add all listing-view properties (merged linked pairs)
+            mapListingView.forEach(prop => {
                 if (prop.latitude && prop.longitude) {
                     propertiesToShow.set(prop.mls_number, { prop, isFiltered: true });
                 }
@@ -1862,6 +2037,7 @@
             // Create markers for all properties to show
             const propertyCount = propertiesToShow.size;
             const shouldShowTooltips = propertyCount < 100;
+            const priceFmtOpts = { rentFirst: document.getElementById('listingTypeFilter')?.value === 'rent' };
             console.log('Properties to show on map:', propertyCount, 'Show tooltips:', shouldShowTooltips);
             propertiesToShow.forEach(({ prop, isFiltered: isFilteredProp }, mlsNum) => {
                 if (!prop) {
@@ -1873,7 +2049,7 @@
                     return;
                 }
                 
-                const isSelected = selectedProperties.has(mlsNum);
+                const isSelected = isMlsSelectedForListingView(mlsNum);
                 const isFiltered = isFilteredProp;
                 const isOpportunityZone = isPropertyInOpportunityZone(prop);
 
@@ -1984,7 +2160,7 @@
                 const address = addressHtml || '';
                 
                 const popup = L.popup().setContent(`
-                    <strong>$${prop.price ? prop.price.toLocaleString() : 'N/A'}</strong><br>
+                    <strong>${formatListingPriceLabel(prop, priceFmtOpts)}</strong><br>
                     ${address}<br>
                     ${prop.beds ? `${prop.beds} bed` : ''} ${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}<br>
                     ${prop.nearest_fault_meters ? `Nearest fault: ${(prop.nearest_fault_meters / 1000).toFixed(2)} km` : ''}
@@ -1997,10 +2173,9 @@
                 
                 // Add tooltip if there are fewer than 100 properties
                 if (shouldShowTooltips) {
-                    const pricePerSqft = (prop.price && prop.sqft && prop.sqft > 0) ? ` <span style="font-size: 0.7em; color: #666;">($${Math.round(prop.price / prop.sqft).toLocaleString()}/sqft)</span>` : '';
                     const tooltipContent = `
                         <div style="font-size: 12px; min-width: 150px; max-width: 250px;">
-                            <strong style="display: block; margin-bottom: 4px;">$${prop.price ? prop.price.toLocaleString() : 'N/A'}${pricePerSqft}</strong>
+                            <strong style="display: block; margin-bottom: 4px;">${formatListingPriceWithPerSqft(prop, priceFmtOpts)}</strong>
                             <span style="color: #666; display: block; margin-bottom: 2px; font-size: 11px;">${address}</span>
                             ${prop.beds || prop.sqft ? `<span style="color: #666; font-size: 11px; display: block;">${prop.beds ? `${prop.beds} bed` : ''}${prop.beds && prop.sqft ? ', ' : ''}${prop.sqft ? `${prop.sqft.toLocaleString()} sqft` : ''}</span>` : ''}
                         </div>
@@ -2091,7 +2266,7 @@
         function populateFilters() {
             const areaSet = new Set();
             const zipcodeSet = new Set();
-            const prices = allProperties.map(p => p.price).filter(p => p > 0);
+            const prices = allProperties.map(p => effectivePriceAmount(p)).filter(p => p > 0);
 
             allProperties.forEach(prop => {
                 if (prop.city) areaSet.add(prop.city);
@@ -2122,35 +2297,40 @@
                 const maxMaintenance = Math.max(...maintenanceFees);
                 
                 const maintenanceRange = maxMaintenance - minMaintenance;
-                let padding, sliderMin, sliderMax;
+                let padding, sliderMax;
                 
                 if (maintenanceRange === 0) {
                     padding = Math.max(50, Math.floor(minMaintenance * 0.1));
-                    sliderMin = Math.max(0, minMaintenance - padding);
                     sliderMax = maxMaintenance + padding;
                 } else {
                     padding = Math.max(50, Math.floor(maintenanceRange * 0.1));
-                    sliderMin = Math.max(0, minMaintenance - padding);
                     sliderMax = maxMaintenance + padding;
                 }
                 
-                const range = sliderMax - sliderMin;
-                const step = Math.max(10, Math.floor(range / 100));
+                // Track starts at $0 so listings with no maintenance fee (null) are included by default.
+                const trackMin = 0;
+                const trackRange = sliderMax - trackMin;
+                const step = Math.max(10, Math.floor(trackRange / 100));
 
                 const maintenanceSliderEl = document.getElementById('maintenanceSlider');
                 if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider) {
-                    maintenanceSliderEl.noUiSlider.updateOptions({ range: { min: sliderMin, max: sliderMax }, step: step }, false);
-                    maintenanceSliderEl.noUiSlider.set([minMaintenance, maxMaintenance]);
-                    currentMaintenanceRange = { min: sliderMin, max: sliderMax };
+                    maintenanceSliderEl.noUiSlider.updateOptions({ range: { min: trackMin, max: sliderMax }, step: step }, false);
+                    const maxValueSteps = Math.ceil(maxMaintenance / step);
+                    maintenanceSliderEl.noUiSlider.set([trackMin, maxValueSteps * step]);
+                    currentMaintenanceRange = { min: trackMin, max: sliderMax };
                     maintenanceStep = step;
                 }
 
                 actualMaxMaintenance = maxMaintenance;
 
-                sliderOriginalRanges.maintenance = { min: sliderMin, max: sliderMax };
+                sliderOriginalRanges.maintenance = { min: trackMin, max: sliderMax };
 
-                document.getElementById('maintenanceMinValue').textContent = minMaintenance.toLocaleString();
-                document.getElementById('maintenanceMaxValue').textContent = maxMaintenance.toLocaleString();
+                if (typeof updateMaintenanceDisplay === 'function') {
+                    updateMaintenanceDisplay();
+                } else {
+                    document.getElementById('maintenanceMinValue').textContent = '0';
+                    document.getElementById('maintenanceMaxValue').textContent = maxMaintenance.toLocaleString();
+                }
             } else {
                 const maintenanceSliderEl = document.getElementById('maintenanceSlider');
                 if (maintenanceSliderEl && maintenanceSliderEl.noUiSlider) {
@@ -2185,25 +2365,31 @@
                     sliderMax = maxPrice + padding;
                 }
                 
-                // Calculate appropriate step size (creates ~1000 steps, minimum $100)
-                const range = sliderMax - sliderMin;
-                const step = Math.max(100, Math.floor(range / 1000));
+                // Track starts at $0 so listings with missing price (stored as 0) are included by default.
+                // Previously the lower handle was set to min(positive prices), which hid $0 rows without touching the slider.
+                const trackMin = 0;
+                const trackRange = sliderMax - trackMin;
+                const step = Math.max(100, Math.floor(trackRange / 1000));
 
                 const priceSliderEl = document.getElementById('priceSlider');
                 if (priceSliderEl && priceSliderEl.noUiSlider) {
-                    priceSliderEl.noUiSlider.updateOptions({ range: { min: sliderMin, max: sliderMax }, step: step }, false);
+                    priceSliderEl.noUiSlider.updateOptions({ range: { min: trackMin, max: sliderMax }, step: step }, false);
                     const maxValueSteps = Math.ceil(maxPrice / step);
-                    priceSliderEl.noUiSlider.set([minPrice, maxValueSteps * step]);
-                    currentPriceRange = { min: sliderMin, max: sliderMax };
+                    priceSliderEl.noUiSlider.set([trackMin, maxValueSteps * step]);
+                    currentPriceRange = { min: trackMin, max: sliderMax };
                     priceStep = step;
                 }
 
                 actualMaxPrice = maxPrice;
 
-                sliderOriginalRanges.price = { min: sliderMin, max: sliderMax };
+                sliderOriginalRanges.price = { min: trackMin, max: sliderMax };
 
-                document.getElementById('priceMinValue').textContent = minPrice.toLocaleString();
-                document.getElementById('priceMaxValue').textContent = maxPrice.toLocaleString();
+                if (typeof updatePriceDisplay === 'function') {
+                    updatePriceDisplay();
+                } else {
+                    document.getElementById('priceMinValue').textContent = '0';
+                    document.getElementById('priceMaxValue').textContent = maxPrice.toLocaleString();
+                }
             } else {
                 const priceSliderEl = document.getElementById('priceSlider');
                 if (priceSliderEl && priceSliderEl.noUiSlider) {
@@ -2331,6 +2517,9 @@
 
             const propertyTypeFilter = document.getElementById('propertyTypeFilter');
             if (propertyTypeFilter) propertyTypeFilter.value = '';
+
+            const listingTypeFilter = document.getElementById('listingTypeFilter');
+            if (listingTypeFilter) listingTypeFilter.value = '';
 
             const areaFilter = document.getElementById('areaFilter');
             if (areaFilter) areaFilter.value = '';
@@ -2572,6 +2761,7 @@
         function filterProperties() {
             const areaFilter = document.getElementById('areaFilter').value;
             const propertyTypeFilter = document.getElementById('propertyTypeFilter').value;
+            const listingTypeFilter = document.getElementById('listingTypeFilter')?.value || '';
             const zipcodeFilter = document.getElementById('zipcodeFilter').value;
             let priceMin = 0, priceMax = Infinity, maintenanceMin = 0, maintenanceMax = Infinity, faultDistanceMin = 0;
             const priceSliderEl = document.getElementById('priceSlider');
@@ -2636,26 +2826,28 @@
                     return false;
                 }
 
+                // Sale vs rent: for rent = has monthly_rent; for sale = has list price
+                if (listingTypeFilter === 'rent') {
+                    if (prop.monthly_rent == null || prop.monthly_rent <= 0) return false;
+                } else if (listingTypeFilter === 'sale') {
+                    if (!prop.price || prop.price <= 0) return false;
+                }
+
                 // Zipcode filter
                 if (zipcodeFilter && prop.zipcode !== parseInt(zipcodeFilter)) {
                     return false;
                 }
 
-                // Price filter
-                if (prop.price < priceMin || prop.price > priceMax) {
+                // Price filter (sale price or monthly rent for rent-only)
+                const effPrice = effectivePriceAmount(prop);
+                if (effPrice < priceMin || effPrice > priceMax) {
                     return false;
                 }
 
-                // Maintenance fee filter (only apply if property has maintenance fee)
-                if (prop.monthly_maintenance_fee !== null && prop.monthly_maintenance_fee !== undefined) {
-                    if (prop.monthly_maintenance_fee < maintenanceMin || prop.monthly_maintenance_fee > maintenanceMax) {
-                        return false;
-                    }
-                } else {
-                    // If property has no maintenance fee, only include if min is 0
-                    if (maintenanceMin > 0) {
-                        return false;
-                    }
+                // Maintenance fee filter (null/undefined = no fee, treated as $0)
+                const maintFee = Number(prop.monthly_maintenance_fee ?? 0);
+                if (maintFee < maintenanceMin || maintFee > maintenanceMax) {
+                    return false;
                 }
 
                 // Opportunity zone filter
@@ -2675,10 +2867,11 @@
 
         // Update statistics
         function updateStats() {
-            document.getElementById('totalCount').textContent = filteredProperties.length;
+            const listingView = buildListingViewMergedProperties(filteredProperties, allProperties);
+            document.getElementById('totalCount').textContent = listingView.length;
             
-            if (filteredProperties.length > 0) {
-                const prices = filteredProperties.map(p => p.price).filter(p => p > 0);
+            if (listingView.length > 0) {
+                const prices = listingView.map(p => effectivePriceAmount(p)).filter(p => p > 0);
                 if (prices.length > 0) {
                     const minPrice = Math.min(...prices);
                     const maxPrice = Math.max(...prices);
@@ -2692,7 +2885,7 @@
                     document.getElementById('priceRange').textContent = '$0 - $0';
                 }
                 
-                const maintenanceFees = filteredProperties.map(p => p.monthly_maintenance_fee).filter(f => f !== null && f !== undefined && f > 0);
+                const maintenanceFees = listingView.map(p => p.monthly_maintenance_fee).filter(f => f !== null && f !== undefined && f > 0);
                 if (maintenanceFees.length > 0) {
                     const minMaintenance = Math.min(...maintenanceFees);
                     const maxMaintenance = Math.max(...maintenanceFees);
@@ -2711,18 +2904,55 @@
             }
         }
 
-        // Sort properties
-        function sortProperties() {
+        function compareZipcodeTiebreak(a, b) {
+            const za = a.zipcode != null ? Number(a.zipcode) : 0;
+            const zb = b.zipcode != null ? Number(b.zipcode) : 0;
+            return za - zb;
+        }
+
+        function compareStreetNameTiebreak(a, b) {
+            const sa = String(a.street || '').trim().toLowerCase();
+            const sb = String(b.street || '').trim().toLowerCase();
+            return sa.localeCompare(sb, undefined, { sensitivity: 'base' });
+        }
+
+        function compareStreetNumberTiebreak(a, b) {
+            const na = Number(a.street_number);
+            const nb = Number(b.street_number);
+            const va = Number.isFinite(na) ? na : 0;
+            const vb = Number.isFinite(nb) ? nb : 0;
+            return va - vb;
+        }
+
+        function compareMlsTiebreak(a, b) {
+            return (Number(a.mls_number) || 0) - (Number(b.mls_number) || 0);
+        }
+
+        /** When primary sort key ties: zipcode (skip if already sorting by zip), street name, street number, MLS. */
+        function compareSecondaryTiebreak(a, b, field) {
+            if (field !== 'zipcode') {
+                const z = compareZipcodeTiebreak(a, b);
+                if (z !== 0) return z;
+            }
+            const st = compareStreetNameTiebreak(a, b);
+            if (st !== 0) return st;
+            const sn = compareStreetNumberTiebreak(a, b);
+            if (sn !== 0) return sn;
+            return compareMlsTiebreak(a, b);
+        }
+
+        // Sort properties (listing view rows: merged pairs or single rows)
+        function sortListingViewArray(arr) {
             const sortBy = document.getElementById('sortBy').value;
             // Split on last hyphen to handle fields with hyphens like "price-per-sqft"
             const lastHyphenIndex = sortBy.lastIndexOf('-');
             const field = sortBy.substring(0, lastHyphenIndex);
             const direction = sortBy.substring(lastHyphenIndex + 1);
-            
-            filteredProperties.sort((a, b) => {
+
+            arr.sort((a, b) => {
                 // First, prioritize selected properties
-                const aSelected = selectedProperties.has(a.mls_number);
-                const bSelected = selectedProperties.has(b.mls_number);
+                const aSelected = isMlsSelectedForListingView(a.mls_number);
+                const bSelected = isMlsSelectedForListingView(b.mls_number);
                 
                 // If one is selected and the other isn't, selected comes first
                 if (aSelected && !bSelected) return -1;
@@ -2733,17 +2963,17 @@
                 
                 switch (field) {
                     case 'price':
-                        aValue = a.price || 0;
-                        bValue = b.price || 0;
-                        // If both are 0 or null, maintain order
-                        if (aValue === 0 && bValue === 0) return 0;
+                        aValue = effectivePriceAmount(a);
+                        bValue = effectivePriceAmount(b);
                         break;
                     case 'price-per-sqft':
-                        // Calculate price per square foot
-                        const aPricePerSqft = (a.price && a.sqft && a.sqft > 0) ? a.price / a.sqft : null;
-                        const bPricePerSqft = (b.price && b.sqft && b.sqft > 0) ? b.price / b.sqft : null;
+                        // Sale $/sqft only (rent listings have no meaningful $/sqft from list price)
+                        const aPricePerSqft = (a.price && a.price > 0 && a.sqft && a.sqft > 0) ? a.price / a.sqft : null;
+                        const bPricePerSqft = (b.price && b.price > 0 && b.sqft && b.sqft > 0) ? b.price / b.sqft : null;
                         // Properties without price or sqft go to end
-                        if (aPricePerSqft === null && bPricePerSqft === null) return 0;
+                        if (aPricePerSqft === null && bPricePerSqft === null) {
+                            return compareSecondaryTiebreak(a, b, field);
+                        }
                         if (aPricePerSqft === null) return 1;
                         if (bPricePerSqft === null) return -1;
                         aValue = aPricePerSqft;
@@ -2757,7 +2987,9 @@
                         aValue = a.monthly_maintenance_fee || null;
                         bValue = b.monthly_maintenance_fee || null;
                         // Properties without maintenance fee go to end
-                        if (aValue === null && bValue === null) return 0;
+                        if (aValue === null && bValue === null) {
+                            return compareSecondaryTiebreak(a, b, field);
+                        }
                         if (aValue === null) return 1;
                         if (bValue === null) return -1;
                         break;
@@ -2769,20 +3001,32 @@
                     case 'assignee': {
                         const sa = (getAssignmentForMls(a.mls_number).assignee || '').trim().toLowerCase();
                         const sb = (getAssignmentForMls(b.mls_number).assignee || '').trim().toLowerCase();
-                        if (!sa && !sb) return 0;
+                        if (!sa && !sb) {
+                            return compareSecondaryTiebreak(a, b, field);
+                        }
                         if (!sa) return 1;
                         if (!sb) return -1;
                         const cmp = sa.localeCompare(sb);
-                        return direction === 'asc' ? cmp : -cmp;
+                        const primary = direction === 'asc' ? cmp : -cmp;
+                        if (primary === 0) {
+                            return compareSecondaryTiebreak(a, b, field);
+                        }
+                        return primary;
                     }
                     default:
                         return 0;
                 }
 
+                let primary;
                 if (direction === 'asc') {
-                    return aValue - bValue;
+                    primary = aValue - bValue;
+                } else {
+                    primary = bValue - aValue;
                 }
-                return bValue - aValue;
+                if (primary === 0) {
+                    return compareSecondaryTiebreak(a, b, field);
+                }
+                return primary;
             });
         }
 
@@ -2832,10 +3076,13 @@
                 return;
             }
 
-            // Sort before displaying (sortProperties now handles selected properties first)
-            sortProperties();
+            const listingViewProperties = buildListingViewMergedProperties(filteredProperties, allProperties);
+            sortListingViewArray(listingViewProperties);
 
-            container.innerHTML = filteredProperties.map(prop => {
+            const listingTypeFilter = document.getElementById('listingTypeFilter')?.value || '';
+            const priceFmtOpts = { rentFirst: listingTypeFilter === 'rent' };
+
+            container.innerHTML = listingViewProperties.map(prop => {
                 // Build address on 2 lines: Street on line 1, City State zipcode on line 2
                 const streetAddress = (prop.street_number && prop.street) 
                     ? `${prop.street_number} ${prop.street}` 
@@ -2877,7 +3124,12 @@
                     ? `<img src="${mainImage}" alt="Property image" onerror="this.parentElement.innerHTML='<div class=\\'no-image\\'>No Image</div>'">`
                     : '<div class="no-image">No Image</div>';
 
-                const isSelected = selectedProperties.has(prop.mls_number);
+                const statusRaw = String(prop.status || '').trim();
+                const statusOverlayHtml = statusRaw
+                    ? `<span class="property-image-status" title="${escHtmlAttr(statusRaw)}">${escHtmlText(statusRaw)}</span>`
+                    : '';
+
+                const isSelected = isMlsSelectedForListingView(prop.mls_number);
                 const isOpportunityZone = isPropertyInOpportunityZone(prop);
                 const daysOnMarket = getDaysOnMarket(prop.listing_date);
                 const pa = getAssignmentForMls(prop.mls_number);
@@ -2887,11 +3139,12 @@
                     <div class="property-card ${isSelected ? 'selected' : ''} ${isOpportunityZone ? 'opportunity-zone' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
                         <div class="property-image">
                             ${imageHtml}
+                            ${statusOverlayHtml}
                             ${isOpportunityZone ? `<div style="position: absolute; top: 10px; left: 10px; background: rgba(26, 188, 156, 0.9); color: white; padding: 5px 10px; border-radius: 4px; font-size: 16px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); line-height: 1.2; z-index: 15;" title="Opportunity Zone ID: ${prop.opportunity_zone || 'Unknown'}">📈 OZ</div>` : ''}
                         </div>
                         <div class="property-content">
                             <div class="property-price">
-                                $${prop.price ? prop.price.toLocaleString() : 'N/A'}${(prop.price && prop.sqft && prop.sqft > 0) ? ` <span style="font-size: 0.6em; color: #666;">($${Math.round(prop.price / prop.sqft).toLocaleString()}/sqft)</span>` : ''}
+                                ${formatListingPriceWithPerSqft(prop, priceFmtOpts)}
                                 ${isOpportunityZone ? ' <span style="color: #1abc9c; font-size: 0.8em; margin-left: 8px;" title="Opportunity Zone">📈</span>' : ''}
                             </div>
                             <div class="property-address">${address}</div>
@@ -2945,12 +3198,12 @@
         });
         document.getElementById('areaFilter').addEventListener('change', filterProperties);
         document.getElementById('propertyTypeFilter').addEventListener('change', filterProperties);
+        document.getElementById('listingTypeFilter').addEventListener('change', filterProperties);
         document.getElementById('includeOlderProperties').addEventListener('change', filterProperties);
         document.getElementById('opportunityZoneFilter').addEventListener('change', filterProperties);
         document.getElementById('assigneeFilter').addEventListener('change', filterProperties);
         document.getElementById('zipcodeFilter').addEventListener('change', filterProperties);
         document.getElementById('sortBy').addEventListener('change', () => {
-            sortProperties();
             displayProperties();
         });
         

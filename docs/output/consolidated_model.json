@@ -19,6 +19,12 @@
               "entity": "state",
               "parent_array": "cities"
             }
+          ],
+          "x-foreignKeys": [
+            {
+              "entity": "state",
+              "parent_array": "cities"
+            }
           ]
         },
         "zipcodes": {
@@ -36,7 +42,10 @@
       ],
       "x-primaryKey": "name",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "crime_stats": {
       "type": "object",
@@ -50,7 +59,13 @@
               "parent_array": "crime_statistics"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "zipcode_area",
+              "parent_array": "crime_statistics"
+            }
+          ]
         },
         "violent_crime": {
           "type": "number",
@@ -67,7 +82,10 @@
       ],
       "x-primaryKey": "zipcode",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "demographic_stats": {
       "type": "object",
@@ -81,7 +99,13 @@
               "parent_array": "demographics"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "zipcode_area",
+              "parent_array": "demographics"
+            }
+          ]
         },
         "hispanic": {
           "type": "number",
@@ -106,7 +130,10 @@
       ],
       "x-primaryKey": "zipcode",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "fault": {
       "type": "object",
@@ -120,6 +147,12 @@
           "type": "string",
           "description": "Foreign key reference to fault_system.name",
           "x-parents": [
+            {
+              "entity": "fault_system",
+              "parent_array": "faults"
+            }
+          ],
+          "x-foreignKeys": [
             {
               "entity": "fault_system",
               "parent_array": "faults"
@@ -151,7 +184,10 @@
       ],
       "x-primaryKey": "id",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "fault_system": {
       "type": "object",
@@ -270,7 +306,13 @@
               "parent_array": "bounds"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "geographic_area",
+              "parent_array": "bounds"
+            }
+          ]
         },
         "north_lat": {
           "type": "number",
@@ -299,7 +341,10 @@
       ],
       "x-primaryKey": "area_id",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "hcad_real_acct": {
       "type": "object",
@@ -683,10 +728,25 @@
           "description": "MLS (Multiple Listing Service) number - unique identifier for the property",
           "x-primaryKey": true
         },
+        "linked_mls_number": {
+          "type": "integer",
+          "description": "Optional MLS number of the companion listing when the same real property is listed\nseparately for sale and for rent (two MLS records). References property.mls_number.\nOmit when unknown or when the listing is not paired.\n",
+          "x-foreignKeys": [
+            {
+              "entity": "property"
+            }
+          ]
+        },
         "zipcode": {
           "type": "integer",
           "description": "ZIP code as integer - foreign key reference to zipcode.zipcode",
           "x-parents": [
+            {
+              "entity": "zipcode",
+              "parent_array": "properties"
+            }
+          ],
+          "x-foreignKeys": [
             {
               "entity": "zipcode",
               "parent_array": "properties"
@@ -750,9 +810,16 @@
         },
         "economics": {
           "type": "array",
-          "description": "Economic information for this property including pricing and maintenance fees",
+          "description": "Economic information for this property including list/sale pricing and maintenance fees",
           "items": {
             "$ref": "#/$defs/property_economics"
+          }
+        },
+        "rental": {
+          "type": "array",
+          "description": "Lease / monthly rent when the listing is marketed for rent (see property_rental.monthly_rent)",
+          "items": {
+            "$ref": "#/$defs/property_rental"
           }
         },
         "property_schools": {
@@ -770,7 +837,12 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2,
+        4,
+        5
+      ],
+      "x-version": 5
     },
     "property_address": {
       "type": "object",
@@ -784,7 +856,13 @@
               "parent_array": "address"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "address"
+            }
+          ]
         },
         "site_address": {
           "type": "object",
@@ -838,7 +916,10 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "property_detail": {
       "type": "object",
@@ -852,7 +933,13 @@
               "parent_array": "detail"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "detail"
+            }
+          ]
         },
         "property_type": {
           "type": "string",
@@ -879,8 +966,12 @@
         },
         "sqft": {
           "type": "integer",
-          "description": "Square footage of the property",
+          "description": "Living area square footage (from listing card or HAR Building Size on detail page)",
           "minimum": 10
+        },
+        "building_size": {
+          "type": "string",
+          "description": "Raw Building Size line from HAR homedetail (e.g. sqft source and /Appraisal District)"
         },
         "lot_size_sqft": {
           "type": "integer",
@@ -888,7 +979,21 @@
         },
         "year_built": {
           "type": "integer",
-          "description": "Year the property was built"
+          "description": "Year the property was built (parsed four-digit year)"
+        },
+        "year_built_raw": {
+          "type": "string",
+          "description": "Full Year Built value from HAR (e.g. year plus appraisal district suffix)"
+        },
+        "stories": {
+          "type": "integer",
+          "description": "Number of stories (HAR homedetail Stories field)",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "garages": {
+          "type": "string",
+          "description": "Garage count and style from HAR (e.g. spaces and attached/detached)"
         }
       },
       "description": "Physical characteristics and specifications of the property.\nLinked to property via mls_number foreign key.\n",
@@ -897,7 +1002,10 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "property_economics": {
       "type": "object",
@@ -911,11 +1019,20 @@
               "parent_array": "economics"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "economics"
+            },
+            {
+              "entity": "property_detail"
+            }
+          ]
         },
         "price": {
           "type": "integer",
-          "description": "Listing price as integer (in dollars)"
+          "description": "List / sale price in dollars when the listing is for sale (or sale+rent with sale as primary).\nUse 0 when the listing is for rent/lease only — advertised rent is in property_rental.monthly_rent.\n"
         },
         "price_per_sqft": {
           "type": "number",
@@ -936,20 +1053,30 @@
         },
         "opportunity_zone": {
           "type": "string",
-          "description": "Foreign key reference to geographic_area.area_id if property is located within an opportunity zone"
+          "description": "Foreign key reference to geographic_area.area_id if property is located within an opportunity zone",
+          "x-foreignKeys": [
+            {
+              "entity": "geographic_area"
+            }
+          ]
         },
         "monthly_maintenance_fee": {
           "type": "integer",
           "description": "Monthly maintenance fee in dollars (as integer)"
         }
       },
-      "description": "Economic information for the property, including pricing, calculated metrics, and maintenance fees.\nLinked to property via mls_number foreign key.\n",
+      "description": "Economic information for the property, including list/sale pricing, calculated metrics, and maintenance fees.\nAdvertised monthly rent is modeled on property_rental (property.rental).\nLinked to property via mls_number foreign key.\n",
       "required": [
         "mls_number"
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2,
+        3,
+        5
+      ],
+      "x-version": 5
     },
     "property_geolocation": {
       "type": "object",
@@ -963,7 +1090,13 @@
               "parent_array": "geolocation"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "geolocation"
+            }
+          ]
         },
         "latitude": {
           "type": "number",
@@ -1000,7 +1133,12 @@
         },
         "nearest_fault_id": {
           "type": "string",
-          "description": "Foreign key reference to fault.id - the nearest fault key point"
+          "description": "Foreign key reference to fault.id - the nearest fault key point",
+          "x-foreignKeys": [
+            {
+              "entity": "fault"
+            }
+          ]
         }
       },
       "description": "Geographic coordinates, elevation, flood zone, and fault proximity data.\nLinked to property via mls_number foreign key.\n",
@@ -1009,7 +1147,10 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "property_media": {
       "type": "object",
@@ -1023,7 +1164,13 @@
               "parent_array": "media"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "media"
+            }
+          ]
         },
         "images": {
           "type": "array",
@@ -1039,7 +1186,10 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "property_metadata": {
       "type": "object",
@@ -1053,7 +1203,13 @@
               "parent_array": "metadata"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "metadata"
+            }
+          ]
         },
         "index": {
           "type": "integer",
@@ -1074,7 +1230,68 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
+    },
+    "property_rental": {
+      "type": "object",
+      "properties": {
+        "mls_number": {
+          "type": "integer",
+          "description": "Foreign key reference to property.mls_number and property_detail.mls_number (for computed field access)",
+          "x-parents": [
+            {
+              "entity": "property",
+              "parent_array": "rental"
+            }
+          ],
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "rental"
+            },
+            {
+              "entity": "property_detail"
+            }
+          ]
+        },
+        "monthly_rent": {
+          "type": "integer",
+          "description": "Advertised monthly rent in dollars for lease/rental listings.\nFor rent-only listings, the HAR card amount is stored here; property_economics.price is 0.\n"
+        },
+        "rent_per_sqft": {
+          "type": "number",
+          "description": "Monthly rent per square foot (calculated as monthly_rent / sqft from property_detail)",
+          "readOnly": true,
+          "x-computed": {
+            "operation": "division",
+            "fields": [
+              {
+                "field": "monthly_rent"
+              },
+              {
+                "field": "sqft",
+                "entity": "property_detail"
+              }
+            ]
+          }
+        }
+      },
+      "description": "Rental economics for the property when marketed for lease (including rent-only listings).\nLinked to property via mls_number foreign key (nested under property.rental).\nSale / list price remains on property_economics.price; use price 0 for rent-only listings.\n",
+      "required": [
+        "mls_number",
+        "monthly_rent"
+      ],
+      "x-primaryKey": "mls_number",
+      "x-created": 5,
+      "x-modified": [
+        6,
+        7
+      ],
+      "x-version": 7
     },
     "property_schools": {
       "type": "object",
@@ -1088,19 +1305,40 @@
               "parent_array": "property_schools"
             }
           ],
-          "x-primaryKey": true
+          "x-primaryKey": true,
+          "x-foreignKeys": [
+            {
+              "entity": "property",
+              "parent_array": "property_schools"
+            }
+          ]
         },
         "elementary_school_id": {
           "type": "integer",
-          "description": "Foreign key reference to school.school_id for the elementary school assigned to this property"
+          "description": "Foreign key reference to school.school_id for the elementary school assigned to this property",
+          "x-foreignKeys": [
+            {
+              "entity": "school"
+            }
+          ]
         },
         "middle_school_id": {
           "type": "integer",
-          "description": "Foreign key reference to school.school_id for the middle school assigned to this property"
+          "description": "Foreign key reference to school.school_id for the middle school assigned to this property",
+          "x-foreignKeys": [
+            {
+              "entity": "school"
+            }
+          ]
         },
         "high_school_id": {
           "type": "integer",
-          "description": "Foreign key reference to school.school_id for the high school assigned to this property"
+          "description": "Foreign key reference to school.school_id for the high school assigned to this property",
+          "x-foreignKeys": [
+            {
+              "entity": "school"
+            }
+          ]
         }
       },
       "description": "Links properties to schools at each of the three school levels (elementary, middle, high).\nEach property can have one school assigned at each level, referenced by school_id.\nSchools can be linked to multiple properties.\n",
@@ -1109,7 +1347,10 @@
       ],
       "x-primaryKey": "mls_number",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "school": {
       "type": "object",
@@ -1175,6 +1416,12 @@
               "entity": "geographic_area",
               "parent_array": "schools"
             }
+          ],
+          "x-foreignKeys": [
+            {
+              "entity": "geographic_area",
+              "parent_array": "schools"
+            }
           ]
         }
       },
@@ -1184,7 +1431,10 @@
       ],
       "x-primaryKey": "school_id",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "search_profile": {
       "type": "object",
@@ -1351,6 +1601,12 @@
               "entity": "city",
               "parent_array": "zipcodes"
             }
+          ],
+          "x-foreignKeys": [
+            {
+              "entity": "city",
+              "parent_array": "zipcodes"
+            }
           ]
         },
         "county": {
@@ -1371,7 +1627,10 @@
       ],
       "x-primaryKey": "zipcode",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        2
+      ],
+      "x-version": 2
     },
     "zipcode_area": {
       "type": "object",
@@ -1529,6 +1788,12 @@
         "$ref": "#/$defs/property_metadata"
       }
     },
+    "property_rental": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_rental"
+      }
+    },
     "property_schools": {
       "type": "array",
       "items": {
@@ -1579,6 +1844,42 @@
       "timestamp": "2026-03-20T00:04:50-05:00",
       "author": "jeroen",
       "note": "HAR model consolidation (clean output)"
+    },
+    {
+      "id": 2,
+      "timestamp": "2026-03-21T12:09:57-05:00",
+      "author": "jeroen",
+      "note": "HAR model: property_detail homedetail fields, economics monthly_rent; 2026-03-21"
+    },
+    {
+      "id": 3,
+      "timestamp": "2026-03-21T12:26:41-05:00",
+      "author": "jeroen",
+      "note": "Post-extract consolidation"
+    },
+    {
+      "id": 4,
+      "timestamp": "2026-03-21T12:37:01-05:00",
+      "author": "jeroen",
+      "note": "Model: linked_mls_number on property"
+    },
+    {
+      "id": 5,
+      "timestamp": "2026-03-21T13:32:27-05:00",
+      "author": "jeroen",
+      "note": "property_rental entity; monthly_rent moved from property_economics"
+    },
+    {
+      "id": 6,
+      "timestamp": "2026-03-21T13:34:21-05:00",
+      "author": "jeroen",
+      "note": "property_rental rent_per_sqft computed"
+    },
+    {
+      "id": 7,
+      "timestamp": "2026-03-21T13:36:40-05:00",
+      "author": "jeroen",
+      "note": "HAR model consolidation"
     }
   ]
 }
