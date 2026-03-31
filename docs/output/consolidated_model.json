@@ -889,7 +889,8 @@
           "items": {
             "oneOf": [
               {
-                "type": "string"
+                "type": "string",
+                "description": "HCAD real property account number (source column `acct`); trim fixed-width padding."
               },
               {
                 "$ref": "#/$defs/hcad_real_acct"
@@ -917,9 +918,10 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        8
       ],
-      "x-version": 2
+      "x-version": 8
     },
     "property_detail": {
       "type": "object",
@@ -1880,6 +1882,12 @@
       "timestamp": "2026-03-21T13:36:40-05:00",
       "author": "jeroen",
       "note": "HAR model consolidation"
+    },
+    {
+      "id": 8,
+      "timestamp": "2026-03-31T16:42:40-05:00",
+      "author": "jeroen",
+      "note": "har_model consolidation"
     }
   ]
 }
