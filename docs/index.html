@@ -685,6 +685,10 @@
                     <option value="price-desc">Price: High to Low</option>
                     <option value="price-per-sqft-asc">Price per Sqft: Low to High</option>
                     <option value="price-per-sqft-desc">Price per Sqft: High to Low</option>
+                    <option value="sold-price-asc">Sold Price: Low to High</option>
+                    <option value="sold-price-desc">Sold Price: High to Low</option>
+                    <option value="sold-price-per-sqft-asc">Sold Price per Sqft: Low to High</option>
+                    <option value="sold-price-per-sqft-desc">Sold Price per Sqft: High to Low</option>
                     <option value="zipcode-asc">Zipcode: Low to High</option>
                     <option value="zipcode-desc">Zipcode: High to Low</option>
                     <option value="maintenance-asc">Maintenance Fee: Low to High</option>
@@ -1256,7 +1260,7 @@
                         year_built: detail.year_built || null,
                         images: media.images || [],
                         monthly_maintenance_fee: economics.monthly_maintenance_fee || null,
-                        sold_date: economics.sold_date || null,
+                        sold_date: prop.sold_date || null,
                         sold_price_range: economics.sold_price_range || null,
                         opportunity_zone: economics.opportunity_zone || null,
                         latitude: geolocation?.latitude ?? null,
@@ -3016,6 +3020,34 @@
                         if (bPricePerSqft === null) return -1;
                         aValue = aPricePerSqft;
                         bValue = bPricePerSqft;
+                        break;
+                    case 'sold-price':
+                        aValue = soldPriceMidpointValue(a.sold_price_range);
+                        bValue = soldPriceMidpointValue(b.sold_price_range);
+                        if (aValue === null && bValue === null) {
+                            return compareSecondaryTiebreak(a, b, field);
+                        }
+                        if (aValue === null) return 1;
+                        if (bValue === null) return -1;
+                        break;
+                    case 'sold-price-per-sqft':
+                        aValue = (a.sqft && a.sqft > 0)
+                            ? (() => {
+                                const sold = soldPriceMidpointValue(a.sold_price_range);
+                                return sold != null ? sold / a.sqft : null;
+                            })()
+                            : null;
+                        bValue = (b.sqft && b.sqft > 0)
+                            ? (() => {
+                                const sold = soldPriceMidpointValue(b.sold_price_range);
+                                return sold != null ? sold / b.sqft : null;
+                            })()
+                            : null;
+                        if (aValue === null && bValue === null) {
+                            return compareSecondaryTiebreak(a, b, field);
+                        }
+                        if (aValue === null) return 1;
+                        if (bValue === null) return -1;
                         break;
                     case 'zipcode':
                         aValue = a.zipcode || 0;

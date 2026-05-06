@@ -770,6 +770,11 @@
           "type": "string",
           "description": "Date the property was listed (ISO format YYYY-MM-DD, 'Just Listed', or MM/DD/YY format). Derived from 'X Day(s) on Market' when available."
         },
+        "sold_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Sold/closed transaction date normalized to ISO format (YYYY-MM-DD)"
+        },
         "auction_dates": {
           "type": "string",
           "description": "Auction dates for foreclosure properties (format: MM/DD/YY-MM/DD/YY)"
@@ -843,11 +848,11 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        4,
         5,
-        9
+        9,
+        10
       ],
-      "x-version": 9
+      "x-version": 10
     },
     "property_address": {
       "type": "object",
@@ -1071,11 +1076,6 @@
           "type": "integer",
           "description": "Monthly maintenance fee in dollars (as integer)"
         },
-        "sold_date": {
-          "type": "string",
-          "format": "date",
-          "description": "Sold/closed transaction date normalized to ISO format (YYYY-MM-DD)"
-        },
         "sold_price_range": {
           "type": "object",
           "properties": {
@@ -1100,11 +1100,11 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        3,
         5,
-        9
+        9,
+        10
       ],
-      "x-version": 9
+      "x-version": 10
     },
     "property_geolocation": {
       "type": "object",
@@ -1929,6 +1929,12 @@
       "timestamp": "2026-05-06T09:16:56-05:00",
       "author": "jbemmel",
       "note": "Consolidate sold economics fields and placement fixes"
+    },
+    {
+      "id": 10,
+      "timestamp": "2026-05-06T09:49:02-05:00",
+      "author": "jbemmel",
+      "note": "sold_date moved from property_economics to property"
     }
   ]
 }
