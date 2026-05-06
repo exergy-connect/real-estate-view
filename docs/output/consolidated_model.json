@@ -783,6 +783,16 @@
           "type": "string",
           "description": "Property description text"
         },
+        "tags": {
+          "type": "array",
+          "description": "Optional tags for analysis or workflow; each entry must be hcad_comp_candidate (extend the enum in the model when additional tag values are needed).",
+          "items": {
+            "type": "string",
+            "enum": [
+              "hcad_comp_candidate"
+            ]
+          }
+        },
         "address": {
           "type": "array",
           "description": "Street address details for this property",
@@ -848,11 +858,11 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        5,
-        9,
-        10
+        10,
+        11,
+        12
       ],
-      "x-version": 10
+      "x-version": 12
     },
     "property_address": {
       "type": "object",
@@ -1935,6 +1945,18 @@
       "timestamp": "2026-05-06T09:49:02-05:00",
       "author": "jbemmel",
       "note": "sold_date moved from property_economics to property"
+    },
+    {
+      "id": 11,
+      "timestamp": "2026-05-06T14:58:14-05:00",
+      "author": "jbemmel",
+      "note": "Validate property.tags model field"
+    },
+    {
+      "id": 12,
+      "timestamp": "2026-05-06T14:58:56-05:00",
+      "author": "jbemmel",
+      "note": "property.tags enum single value"
     }
   ]
 }
