@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft-2020-12/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Consolidated Data Model",
   "description": "Consolidated entity schemas from data model files",
   "$defs": {
@@ -8,8 +8,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "City name (primary key)",
-          "x-primaryKey": true
+          "description": "City name (primary key)"
         },
         "state": {
           "type": "string",
@@ -43,9 +42,10 @@
       "x-primaryKey": "name",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "crime_stats": {
       "type": "object",
@@ -59,7 +59,6 @@
               "parent_array": "crime_statistics"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "zipcode_area",
@@ -83,9 +82,10 @@
       "x-primaryKey": "zipcode",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "demographic_stats": {
       "type": "object",
@@ -99,7 +99,6 @@
               "parent_array": "demographics"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "zipcode_area",
@@ -131,17 +130,17 @@
       "x-primaryKey": "zipcode",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "fault": {
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the fault key point (short string)",
-          "x-primaryKey": true
+          "description": "Unique identifier for the fault key point (short string)"
         },
         "fault_system_name": {
           "type": "string",
@@ -185,17 +184,17 @@
       "x-primaryKey": "id",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "fault_system": {
       "type": "object",
       "properties": {
         "name": {
           "type": "string",
-          "description": "Fault system name (e.g., 'Long Point Fault')",
-          "x-primaryKey": true
+          "description": "Fault system name (e.g., 'Long Point Fault')"
         },
         "type": {
           "type": "string",
@@ -223,15 +222,17 @@
       ],
       "x-primaryKey": "name",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        9
+      ],
+      "x-version": 9
     },
     "geographic_area": {
       "type": "object",
       "properties": {
         "area_id": {
           "type": "string",
-          "description": "Unique identifier for the geographic area (format: type_name, e.g., 'neighborhood_the_heights')",
-          "x-primaryKey": true
+          "description": "Unique identifier for the geographic area (format: type_name, e.g., 'neighborhood_the_heights')"
         },
         "area_type": {
           "type": "string",
@@ -292,7 +293,10 @@
       ],
       "x-primaryKey": "area_id",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        9
+      ],
+      "x-version": 9
     },
     "geographic_bounds": {
       "type": "object",
@@ -306,7 +310,6 @@
               "parent_array": "bounds"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "geographic_area",
@@ -342,9 +345,10 @@
       "x-primaryKey": "area_id",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "hcad_real_acct": {
       "type": "object",
@@ -352,7 +356,6 @@
         "hcad_account": {
           "type": "string",
           "description": "HCAD real property account number (source column `acct`); trim fixed-width padding.",
-          "x-primaryKey": true,
           "x-source": "Column: acct"
         },
         "yr": {
@@ -718,15 +721,17 @@
       ],
       "x-primaryKey": "hcad_account",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        9
+      ],
+      "x-version": 9
     },
     "property": {
       "type": "object",
       "properties": {
         "mls_number": {
           "type": "integer",
-          "description": "MLS (Multiple Listing Service) number - unique identifier for the property",
-          "x-primaryKey": true
+          "description": "MLS (Multiple Listing Service) number - unique identifier for the property"
         },
         "linked_mls_number": {
           "type": "integer",
@@ -838,11 +843,11 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2,
         4,
-        5
+        5,
+        9
       ],
-      "x-version": 5
+      "x-version": 9
     },
     "property_address": {
       "type": "object",
@@ -856,7 +861,6 @@
               "parent_array": "address"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -881,7 +885,8 @@
             }
           },
           "required": [],
-          "description": "Structured site location key: street number, street name, and ZIP (5-digit integer).\nUsed for matching to external parcel rolls (e.g. HCAD) and deduplication; city/state remain separate fields.\n"
+          "description": "Structured site location key: street number, street name, and ZIP (5-digit integer).\nUsed for matching to external parcel rolls (e.g. HCAD) and deduplication; city/state remain separate fields.\n",
+          "additionalProperties": false
         },
         "hcad_accounts": {
           "type": "array",
@@ -919,9 +924,10 @@
       "x-created": 1,
       "x-modified": [
         2,
-        8
+        8,
+        9
       ],
-      "x-version": 8
+      "x-version": 9
     },
     "property_detail": {
       "type": "object",
@@ -935,7 +941,6 @@
               "parent_array": "detail"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1005,9 +1010,10 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "property_economics": {
       "type": "object",
@@ -1021,7 +1027,6 @@
               "parent_array": "economics"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1065,6 +1070,27 @@
         "monthly_maintenance_fee": {
           "type": "integer",
           "description": "Monthly maintenance fee in dollars (as integer)"
+        },
+        "sold_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Sold/closed transaction date normalized to ISO format (YYYY-MM-DD)"
+        },
+        "sold_price_range": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "description": "Minimum sold price bound in dollars"
+            },
+            "max": {
+              "type": "integer",
+              "description": "Maximum sold price bound in dollars"
+            }
+          },
+          "required": [],
+          "description": "Sold price range captured from HAR as numeric min/max bounds",
+          "additionalProperties": false
         }
       },
       "description": "Economic information for the property, including list/sale pricing, calculated metrics, and maintenance fees.\nAdvertised monthly rent is modeled on property_rental (property.rental).\nLinked to property via mls_number foreign key.\n",
@@ -1074,11 +1100,11 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2,
         3,
-        5
+        5,
+        9
       ],
-      "x-version": 5
+      "x-version": 9
     },
     "property_geolocation": {
       "type": "object",
@@ -1092,7 +1118,6 @@
               "parent_array": "geolocation"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1150,9 +1175,10 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "property_media": {
       "type": "object",
@@ -1166,7 +1192,6 @@
               "parent_array": "media"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1189,9 +1214,10 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "property_metadata": {
       "type": "object",
@@ -1205,7 +1231,6 @@
               "parent_array": "metadata"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1233,9 +1258,10 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "property_rental": {
       "type": "object",
@@ -1249,7 +1275,6 @@
               "parent_array": "rental"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1291,9 +1316,10 @@
       "x-created": 5,
       "x-modified": [
         6,
-        7
+        7,
+        9
       ],
-      "x-version": 7
+      "x-version": 9
     },
     "property_schools": {
       "type": "object",
@@ -1307,7 +1333,6 @@
               "parent_array": "property_schools"
             }
           ],
-          "x-primaryKey": true,
           "x-foreignKeys": [
             {
               "entity": "property",
@@ -1350,17 +1375,17 @@
       "x-primaryKey": "mls_number",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "school": {
       "type": "object",
       "properties": {
         "school_id": {
           "type": "integer",
-          "description": "Unique school identifier from HAR.com (extracted from URL pattern: /school/{school_id}/...)",
-          "x-primaryKey": true
+          "description": "Unique school identifier from HAR.com (extracted from URL pattern: /school/{school_id}/...)"
         },
         "name": {
           "type": "string",
@@ -1434,17 +1459,17 @@
       "x-primaryKey": "school_id",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "search_profile": {
       "type": "object",
       "properties": {
         "profile_id": {
           "type": "string",
-          "description": "Unique identifier for the search profile. Used as the primary key to store and retrieve search configurations.",
-          "x-primaryKey": true
+          "description": "Unique identifier for the search profile. Used as the primary key to store and retrieve search configurations."
         },
         "price": {
           "type": "object",
@@ -1459,7 +1484,8 @@
             }
           },
           "required": [],
-          "description": "Price range filter. If omitted, no price constraints are applied. Both min and max subcomponents are optional - if min is omitted, no minimum price constraint is applied; if max is omitted, no maximum price constraint is applied."
+          "description": "Price range filter. If omitted, no price constraints are applied. Both min and max subcomponents are optional - if min is omitted, no minimum price constraint is applied; if max is omitted, no maximum price constraint is applied.",
+          "additionalProperties": false
         },
         "maintenance_fee": {
           "type": "object",
@@ -1474,7 +1500,8 @@
             }
           },
           "required": [],
-          "description": "Monthly maintenance fee range filter. If omitted, no maintenance fee constraints are applied. Both min and max subcomponents are optional - if min is omitted, no minimum maintenance fee constraint is applied; if max is omitted, no maximum maintenance fee constraint is applied."
+          "description": "Monthly maintenance fee range filter. If omitted, no maintenance fee constraints are applied. Both min and max subcomponents are optional - if min is omitted, no minimum maintenance fee constraint is applied; if max is omitted, no maximum maintenance fee constraint is applied.",
+          "additionalProperties": false
         },
         "property_types": {
           "type": "array",
@@ -1535,7 +1562,8 @@
             }
           },
           "required": [],
-          "description": "School grade filter for elementary, middle, and high school levels. If omitted, no school grade constraints are applied. Each subcomponent is optional - if a level is omitted, no grade constraint is applied for that level. Only properties with schools matching the specified grades at each level will be included in search results. Valid grade values: A, B, C, D, F."
+          "description": "School grade filter for elementary, middle, and high school levels. If omitted, no school grade constraints are applied. Each subcomponent is optional - if a level is omitted, no grade constraint is applied for that level. Only properties with schools matching the specified grades at each level will be included in search results. Valid grade values: A, B, C, D, F.",
+          "additionalProperties": false
         },
         "opportunity_zone_only": {
           "type": "boolean",
@@ -1549,7 +1577,10 @@
       ],
       "x-primaryKey": "profile_id",
       "x-created": 1,
-      "x-version": 1,
+      "x-modified": [
+        9
+      ],
+      "x-version": 9,
       "x-storage": {
         "type": "string",
         "enum": [
@@ -1568,8 +1599,7 @@
           "description": "State abbreviation (e.g., 'TX') - primary key",
           "enum": [
             "TX"
-          ],
-          "x-primaryKey": true
+          ]
         },
         "cities": {
           "type": "array",
@@ -1585,15 +1615,17 @@
       ],
       "x-primaryKey": "name",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        9
+      ],
+      "x-version": 9
     },
     "zipcode": {
       "type": "object",
       "properties": {
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer (primary key)",
-          "x-primaryKey": true
+          "description": "ZIP code as integer (primary key)"
         },
         "city": {
           "type": "string",
@@ -1630,17 +1662,17 @@
       "x-primaryKey": "zipcode",
       "x-created": 1,
       "x-modified": [
-        2
+        2,
+        9
       ],
-      "x-version": 2
+      "x-version": 9
     },
     "zipcode_area": {
       "type": "object",
       "properties": {
         "zipcode": {
           "type": "integer",
-          "description": "ZIP code as integer",
-          "x-primaryKey": true
+          "description": "ZIP code as integer"
         },
         "crime_statistics": {
           "type": "array",
@@ -1663,7 +1695,10 @@
       ],
       "x-primaryKey": "zipcode",
       "x-created": 1,
-      "x-version": 1
+      "x-modified": [
+        9
+      ],
+      "x-version": 9
     },
     "change": {
       "type": "object",
@@ -1888,6 +1923,12 @@
       "timestamp": "2026-03-31T16:42:40-05:00",
       "author": "jeroen",
       "note": "har_model consolidation"
+    },
+    {
+      "id": 9,
+      "timestamp": "2026-05-06T09:16:56-05:00",
+      "author": "jbemmel",
+      "note": "Consolidate sold economics fields and placement fixes"
     }
   ]
 }

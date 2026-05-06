@@ -815,6 +815,42 @@
             return formatListingPriceLabel(prop, options);
         }
 
+        function formatSoldPriceRange(range) {
+            if (!range || typeof range !== 'object') return '';
+            const min = Number(range.min);
+            const max = Number(range.max);
+            if (!Number.isFinite(min) && !Number.isFinite(max)) return '';
+            if (Number.isFinite(min) && Number.isFinite(max)) {
+                if (min === max) return `$${min.toLocaleString()}`;
+                return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
+            }
+            if (Number.isFinite(min)) return `$${min.toLocaleString()}`;
+            return `$${max.toLocaleString()}`;
+        }
+
+        function formatSoldPriceMidpoint(range) {
+            if (!range || typeof range !== 'object') return '';
+            const min = Number(range.min);
+            const max = Number(range.max);
+            if (Number.isFinite(min) && Number.isFinite(max)) {
+                const midpoint = Math.round((min + max) / 2);
+                return `$${midpoint.toLocaleString()}`;
+            }
+            return formatSoldPriceRange(range);
+        }
+
+        function soldPriceMidpointValue(range) {
+            if (!range || typeof range !== 'object') return null;
+            const min = Number(range.min);
+            const max = Number(range.max);
+            if (Number.isFinite(min) && Number.isFinite(max)) {
+                return Math.round((min + max) / 2);
+            }
+            if (Number.isFinite(min)) return min;
+            if (Number.isFinite(max)) return max;
+            return null;
+        }
+
         /** Other MLS row linked to this listing (same physical property), if present in allProperties. */
         function getLinkedSibling(prop, allProps) {
             if (prop.linked_mls_number != null) {
@@ -841,7 +877,7 @@
             const hc1 = rowLo.hcad_accounts || [];
             const hc2 = rowHi.hcad_accounts || [];
             merged.hcad_accounts = [...new Set([...hc1, ...hc2])];
-            const overlayFields = ['city', 'state', 'county', 'street_number', 'street', 'zipcode', 'beds', 'full_baths', 'half_baths', 'sqft', 'lot_size_sqft', 'year_built', 'property_type', 'images', 'latitude', 'longitude', 'nearest_fault_meters', 'nearest_fault_id', 'description', 'listing_date', 'status', 'url', 'opportunity_zone', 'monthly_maintenance_fee'];
+            const overlayFields = ['city', 'state', 'county', 'street_number', 'street', 'zipcode', 'beds', 'full_baths', 'half_baths', 'sqft', 'lot_size_sqft', 'year_built', 'property_type', 'images', 'latitude', 'longitude', 'nearest_fault_meters', 'nearest_fault_id', 'description', 'listing_date', 'status', 'url', 'opportunity_zone', 'monthly_maintenance_fee', 'sold_date', 'sold_price_range'];
             for (const f of overlayFields) {
                 const v = detailSource[f];
                 if (v === undefined || v === null) continue;
@@ -1220,6 +1256,8 @@
                         year_built: detail.year_built || null,
                         images: media.images || [],
                         monthly_maintenance_fee: economics.monthly_maintenance_fee || null,
+                        sold_date: economics.sold_date || null,
+                        sold_price_range: economics.sold_price_range || null,
                         opportunity_zone: economics.opportunity_zone || null,
                         latitude: geolocation?.latitude ?? null,
                         longitude: geolocation?.longitude ?? null,
@@ -3134,6 +3172,12 @@
                 const daysOnMarket = getDaysOnMarket(prop.listing_date);
                 const pa = getAssignmentForMls(prop.mls_number);
                 const assigneeVal = escHtmlAttr(pa.assignee || '');
+                const soldPriceRangeLabel = formatSoldPriceRange(prop.sold_price_range);
+                const soldPriceMidpointLabel = formatSoldPriceMidpoint(prop.sold_price_range);
+                const soldMidpointValue = soldPriceMidpointValue(prop.sold_price_range);
+                const soldPerSqft = (soldMidpointValue && prop.sqft && prop.sqft > 0)
+                    ? Math.round(soldMidpointValue / prop.sqft)
+                    : null;
 
                 return `
                     <div class="property-card ${isSelected ? 'selected' : ''} ${isOpportunityZone ? 'opportunity-zone' : ''}" data-mls-number="${prop.mls_number}" onclick="window.togglePropertySelection(${prop.mls_number})">
@@ -3154,6 +3198,8 @@
                                 ${prop.sqft ? `<div class="property-detail-item"><strong>Sqft:</strong> ${prop.sqft.toLocaleString()}</div>` : ''}
                                 ${prop.lot_size_sqft ? `<div class="property-detail-item"><strong>Lot:</strong> ${prop.lot_size_sqft.toLocaleString()} sqft</div>` : ''}
                                 ${prop.year_built ? `<div class="property-detail-item"><strong>Year:</strong> ${prop.year_built}</div>` : ''}
+                                ${prop.sold_date ? `<div class="property-detail-item"><strong>Sold Date:</strong> ${prop.sold_date}</div>` : ''}
+                                ${soldPriceMidpointLabel ? `<div class="property-detail-item"><strong>Sold Mid:</strong> <span title="${escHtmlAttr(soldPriceRangeLabel)}">${soldPriceMidpointLabel}${soldPerSqft ? ` <span style="color:#666;">[$${soldPerSqft.toLocaleString()}/sqft]</span>` : ''}</span></div>` : ''}
                                 ${daysOnMarket !== null ? `<div class="property-detail-item"><strong>Days:</strong> ${daysOnMarket}</div>` : ''}
                             </div>
                             ${prop.property_type ? `<span class="property-type">${prop.property_type}</span>` : ''}
