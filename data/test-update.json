@@ -1,0 +1,11 @@
+{
+  "status": "test",
+  "timestamp": "2026-03-02T00:00:31.638529",
+  "test_id": "full_test",
+  "data": {
+    "test_field": "test_value",
+    "nested": {
+      "key": "value"
+    }
+  }
+}
