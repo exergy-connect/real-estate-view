@@ -1,0 +1,26 @@
+search_profile:
+  - profile_id: oz_a_rated_middle_schools
+    price:
+      min: 100000
+      max: 500000
+    maintenance_fee:
+      max: 500
+    property_types:
+      - Single-Family
+      - Townhouse
+      - Condo
+    zipcodes:
+      - 77088
+      - 77060
+      - 77035
+      - 77024
+      - 77055
+    school_grade:
+      middle: A
+    opportunity_zone_only: true
+    c: 155
+    v: 155
+  - profile_id: price_400k_500k
+    price:
+      min: 400000
+      max: 500000
